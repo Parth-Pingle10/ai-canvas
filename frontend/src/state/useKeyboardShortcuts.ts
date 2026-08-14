@@ -8,6 +8,12 @@ const TOOL_KEYS: Record<string, ToolId> = {
   b: "pencil",
   h: "highlighter",
   e: "eraser",
+  r: "rectangle",
+  o: "circle",
+  t: "triangle",
+  d: "diamond",
+  a: "arrow",
+  x: "text",
 };
 
 export interface KeyboardShortcutHandlers {

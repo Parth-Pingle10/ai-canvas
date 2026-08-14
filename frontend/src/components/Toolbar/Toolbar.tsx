@@ -1,4 +1,7 @@
 import {
+  ArrowUpRight,
+  Circle,
+  Diamond,
   Download,
   Eraser,
   FolderOpen,
@@ -11,7 +14,10 @@ import {
   Redo2,
   Save,
   Sparkles,
+  Square,
   Trash2,
+  Triangle,
+  Type,
   Undo2,
 } from "lucide-react";
 import { useCanvasStore } from "../../state/canvasStore";
@@ -20,13 +26,22 @@ import { ColorPicker } from "../ColorPicker/ColorPicker";
 import { BrushControls } from "../BrushControls/BrushControls";
 import "./Toolbar.css";
 
-const TOOLS: { id: ToolId; label: string; icon: typeof PenLine; shortcut: string }[] = [
+const DRAW_TOOLS: { id: ToolId; label: string; icon: typeof PenLine; shortcut: string }[] = [
   { id: "select", label: "Select", icon: MousePointer2, shortcut: "V" },
   { id: "pen", label: "Pen", icon: PenLine, shortcut: "P" },
   { id: "pencil", label: "Pencil", icon: Pencil, shortcut: "B" },
   { id: "highlighter", label: "Highlighter", icon: Highlighter, shortcut: "H" },
   { id: "eraser", label: "Eraser", icon: Eraser, shortcut: "E" },
   { id: "hand", label: "Hand", icon: Hand, shortcut: "Space" },
+];
+
+const SHAPE_TOOLS: { id: ToolId; label: string; icon: typeof PenLine; shortcut: string }[] = [
+  { id: "rectangle", label: "Rectangle", icon: Square, shortcut: "R" },
+  { id: "circle", label: "Circle", icon: Circle, shortcut: "O" },
+  { id: "triangle", label: "Triangle", icon: Triangle, shortcut: "T" },
+  { id: "diamond", label: "Diamond", icon: Diamond, shortcut: "D" },
+  { id: "arrow", label: "Arrow", icon: ArrowUpRight, shortcut: "A" },
+  { id: "text", label: "Text", icon: Type, shortcut: "X" },
 ];
 
 interface ToolbarProps {
@@ -65,15 +80,34 @@ export function Toolbar({
   const showColorAndSize = tool !== "select" && tool !== "hand" && tool !== "eraser";
   const showEraserSize = tool === "eraser";
   const activeSettings = toolSettings[tool];
+  const isShapeTool = SHAPE_TOOLS.some((t) => t.id === tool);
 
   return (
     <div className="toolbar" role="toolbar" aria-label="Canvas tools">
       <div className="toolbar__group">
-        {TOOLS.map(({ id, label, icon: Icon, shortcut }) => (
+        {DRAW_TOOLS.map(({ id, label, icon: Icon, shortcut }) => (
           <button
             key={id}
             type="button"
             className={`toolbar__button${tool === id ? " toolbar__button--active" : ""}`}
+            onClick={() => setTool(id)}
+            title={`${label} (${shortcut})`}
+            aria-pressed={tool === id}
+            aria-label={label}
+          >
+            <Icon size={18} strokeWidth={2} />
+          </button>
+        ))}
+      </div>
+
+      <div className="toolbar__divider" />
+
+      <div className="toolbar__group">
+        {SHAPE_TOOLS.map(({ id, label, icon: Icon, shortcut }) => (
+          <button
+            key={id}
+            type="button"
+            className={`toolbar__button${tool === id ? " toolbar__button--active" : ""}${isShapeTool && tool === id ? " toolbar__button--shape-active" : ""}`}
             onClick={() => setTool(id)}
             title={`${label} (${shortcut})`}
             aria-pressed={tool === id}
@@ -114,7 +148,7 @@ export function Toolbar({
         <div className="toolbar__group toolbar__hint">
           {selectedIds.length > 0
             ? `${selectedIds.length} selected`
-            : "Click a stroke, or drag to marquee-select"}
+            : "Click an object, or drag to marquee-select"}
         </div>
       )}
 

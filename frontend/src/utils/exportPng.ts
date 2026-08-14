@@ -1,6 +1,7 @@
-import type { BoundingBox, Stroke } from "../types/document";
+import type { BoundingBox, CanvasConnector, CanvasShape, CanvasText, Stroke } from "../types/document";
 import { unionBounds, expandBounds, boundsWidth, boundsHeight } from "../canvas/CoordinateSystem";
 import { drawStroke } from "../canvas/StrokeRenderer";
+import { drawShape, drawConnector, drawCanvasText } from "../canvas/ShapeRenderer";
 
 const EXPORT_MARGIN = 40;
 const MAX_EXPORT_DIMENSION = 8000; // guard against pathologically huge exports
@@ -12,12 +13,20 @@ export class EmptyCanvasExportError extends Error {
   }
 }
 
-export function computeContentBounds(strokes: Stroke[]): BoundingBox | null {
-  if (strokes.length === 0) return null;
-  return strokes.reduce<BoundingBox>(
-    (acc, s) => (acc ? unionBounds(acc, s.bounds) : s.bounds),
-    strokes[0].bounds
-  );
+export function computeContentBounds(
+  strokes: Stroke[],
+  shapes?: CanvasShape[],
+  connectors?: CanvasConnector[],
+  textObjects?: CanvasText[]
+): BoundingBox | null {
+  const allBounds: BoundingBox[] = [];
+  for (const s of strokes) allBounds.push(s.bounds);
+  for (const s of shapes ?? []) if (s.status !== "draft") allBounds.push(s.bounds);
+  for (const c of connectors ?? []) if (c.status !== "draft") allBounds.push(c.bounds);
+  for (const t of textObjects ?? []) if (t.status !== "draft") allBounds.push(t.bounds);
+
+  if (allBounds.length === 0) return null;
+  return allBounds.reduce<BoundingBox>((acc, b) => unionBounds(acc, b), allBounds[0]);
 }
 
 export interface ExportPngOptions {
@@ -26,17 +35,18 @@ export interface ExportPngOptions {
 }
 
 /**
- * Renders only the strokes that make up the confirmed document (never
- * unconfirmed drafts, since those aren't part of `strokes` yet) to a
- * standalone canvas cropped to their bounding box, and returns a PNG blob.
- * Guards against exporting an enormous empty image when the canvas is
- * logically huge but sparsely used.
+ * Renders all confirmed strokes, shapes, connectors, and text to a
+ * standalone canvas cropped to their combined bounding box, and returns
+ * a PNG blob. Draft objects are intentionally excluded.
  */
 export async function exportCanvasToPng(
   strokes: Stroke[],
-  options: ExportPngOptions = {}
+  options: ExportPngOptions = {},
+  shapes: CanvasShape[] = [],
+  connectors: CanvasConnector[] = [],
+  textObjects: CanvasText[] = []
 ): Promise<Blob> {
-  const bounds = computeContentBounds(strokes);
+  const bounds = computeContentBounds(strokes, shapes, connectors, textObjects);
   if (!bounds) throw new EmptyCanvasExportError();
 
   const expanded = expandBounds(bounds, EXPORT_MARGIN);
@@ -74,6 +84,28 @@ export async function exportCanvasToPng(
     -expanded.minY * effectiveScale
   );
 
+  // Build shapes map for connector endpoint resolution
+  const shapesMap = new Map(shapes.filter((s) => s.status !== "draft").map((s) => [s.id, s]));
+
+  // Draw connectors first (behind shapes)
+  for (const c of connectors) {
+    if (c.status === "draft") continue;
+    drawConnector(ctx, c, shapesMap, 1, false);
+  }
+
+  // Draw shapes
+  for (const shape of shapes) {
+    if (shape.status === "draft") continue;
+    drawShape(ctx, shape, 1, false);
+  }
+
+  // Draw text
+  for (const t of textObjects) {
+    if (t.status === "draft") continue;
+    drawCanvasText(ctx, t, 1, false);
+  }
+
+  // Draw strokes
   for (const stroke of strokes) {
     drawStroke(ctx, stroke);
   }

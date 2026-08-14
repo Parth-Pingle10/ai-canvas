@@ -12,16 +12,54 @@ import "./AiObjectLayer.css";
 const MIN_CARD_WIDTH = 160;
 const MIN_CARD_HEIGHT = 80;
 
+import { Sparkles } from "lucide-react";
+
 export function AiObjectLayer() {
   const camera = useCanvasStore((s) => s.camera);
   const viewportSize = useCanvasStore((s) => s.viewportSize);
   const aiObjects = useCanvasStore((s) => s.aiObjects);
+  const shapes = useCanvasStore((s) => s.shapes);
+  const connectors = useCanvasStore((s) => s.connectors);
   const pendingRequests = useCanvasStore((s) => s.pendingRequests);
+
+  // Group active draft shapes & connectors by draftGroupId
+  const draftGroups = new Map<string, { bounds: WorldRect; title: string }>();
+  for (const s of shapes) {
+    if (s.status === "draft" && s.draftGroupId) {
+      const g = draftGroups.get(s.draftGroupId);
+      const sb = s.bounds;
+      if (!g) {
+        draftGroups.set(s.draftGroupId, {
+          bounds: { x: sb.minX, y: sb.minY, width: sb.maxX - sb.minX, height: sb.maxY - sb.minY },
+          title: s.text ? `Shape: ${s.shapeType}` : `AI ${s.shapeType}`,
+        });
+      } else {
+        const minX = Math.min(g.bounds.x, sb.minX);
+        const minY = Math.min(g.bounds.y, sb.minY);
+        const maxX = Math.max(g.bounds.x + g.bounds.width, sb.maxX);
+        const maxY = Math.max(g.bounds.y + g.bounds.height, sb.maxY);
+        draftGroups.set(s.draftGroupId, {
+          bounds: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
+          title: "AI Diagram",
+        });
+      }
+    }
+  }
 
   return (
     <div className="ai-layer">
       {aiObjects.map((obj) => (
         <AiCard key={obj.id} object={obj} camera={camera} viewportSize={viewportSize} />
+      ))}
+      {Array.from(draftGroups.entries()).map(([groupId, info]) => (
+        <DraftGroupActionBar
+          key={groupId}
+          draftGroupId={groupId}
+          bounds={info.bounds}
+          title={info.title}
+          camera={camera}
+          viewportSize={viewportSize}
+        />
       ))}
       {pendingRequests.map((req) => (
         <PendingCard
@@ -32,6 +70,65 @@ export function AiObjectLayer() {
           viewportSize={viewportSize}
         />
       ))}
+    </div>
+  );
+}
+
+function DraftGroupActionBar({
+  draftGroupId,
+  bounds,
+  title,
+  camera,
+  viewportSize,
+}: {
+  draftGroupId: string;
+  bounds: WorldRect;
+  title: string;
+  camera: { x: number; y: number; zoom: number };
+  viewportSize: { width: number; height: number };
+}) {
+  const acceptDraftGroup = useCanvasStore((s) => s.acceptDraftGroup);
+  const discardDraftGroup = useCanvasStore((s) => s.discardDraftGroup);
+  const recordOutcome = useMetricsStore((s) => s.recordOutcome);
+
+  // Position bar centered right above the draft group bounds
+  const screen = worldToScreen({ x: bounds.x + bounds.width / 2, y: bounds.y }, camera, viewportSize.width, viewportSize.height);
+
+  const handleAccept = useCallback(() => {
+    acceptDraftGroup(draftGroupId);
+    recordOutcome("accepted");
+  }, [acceptDraftGroup, draftGroupId, recordOutcome]);
+
+  const handleDiscard = useCallback(() => {
+    discardDraftGroup(draftGroupId);
+    recordOutcome("discarded");
+  }, [discardDraftGroup, draftGroupId, recordOutcome]);
+
+  return (
+    <div
+      className="draft-action-bar-container"
+      style={{ left: screen.x, top: screen.y - 14 }}
+    >
+      <div className="draft-action-bar">
+        <Sparkles size={14} className="draft-action-bar__icon" />
+        <span className="draft-action-bar__title">{title} (Draft)</span>
+        <button
+          type="button"
+          className="draft-action-bar__btn draft-action-bar__btn--accept"
+          onClick={handleAccept}
+          title="Accept into canvas"
+        >
+          <Check size={13} /> Accept
+        </button>
+        <button
+          type="button"
+          className="draft-action-bar__btn draft-action-bar__btn--discard"
+          onClick={handleDiscard}
+          title="Discard draft"
+        >
+          <X size={13} /> Discard
+        </button>
+      </div>
     </div>
   );
 }

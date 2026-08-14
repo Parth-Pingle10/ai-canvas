@@ -7,6 +7,8 @@ import { generateId } from "../utils/id";
 import { analyzeRegion, reportOutcome, AnalyzeApiError } from "./apiClient";
 import type { AiObject, WorldRect } from "../types/ai";
 import type { Stroke } from "../types/document";
+import { layoutDiagram } from "../canvas/LayoutEngine";
+import { createCleanShape } from "../utils/shapeRecognition";
 
 const IDLE_DELAY_MS = Number(import.meta.env.VITE_AI_IDLE_DELAY_MS ?? 700);
 const ROI_MARGIN = Number(import.meta.env.VITE_AI_ROI_MARGIN ?? 100);
@@ -180,21 +182,48 @@ export function useAiTrigger() {
         model: response.model,
       });
 
-      const draft: AiObject = {
-        id: generateId("ai"),
-        kind: "ai-object",
-        status: "draft",
-        contentType: response.draft.type,
-        title: response.draft.title,
-        content: response.draft.content,
-        confidence: response.draft.confidence,
-        bounds: anchorBounds,
-        sourceBounds: roi.bounds,
-        requestId,
-        createdAt: Date.now(),
-        version: 1,
-      };
-      addDraft(draft);
+
+
+      const draftType = response.draft.type;
+
+      if (draftType === "diagram" && response.draft.nodes && response.draft.nodes.length > 0) {
+        const draftGroupId = generateId("draft_grp");
+        const layout = layoutDiagram(response.draft.nodes, response.draft.edges ?? [], {
+          originX: anchorBounds.x,
+          originY: anchorBounds.y,
+          layoutDirection: response.draft.layout_direction,
+          draftGroupId,
+          isDraft: true,
+        });
+        useCanvasStore.getState().addDiagramDraft(layout.shapes, layout.connectors);
+      } else if (draftType === "shape" && response.draft.shape) {
+        const draftGroupId = generateId("draft_grp");
+        const cleanShape = createCleanShape(
+          response.draft.shape.shape_type ?? "rectangle",
+          roi.bounds,
+          "#1e1e1e",
+          response.draft.shape.label ?? "",
+          true,
+          draftGroupId
+        );
+        useCanvasStore.getState().addShape(cleanShape);
+      } else {
+        const draft: AiObject = {
+          id: generateId("ai"),
+          kind: "ai-object",
+          status: "draft",
+          contentType: (response.draft.type === "latex" ? "latex" : "markdown"),
+          title: response.draft.title,
+          content: response.draft.content,
+          confidence: response.draft.confidence,
+          bounds: anchorBounds,
+          sourceBounds: roi.bounds,
+          requestId,
+          createdAt: Date.now(),
+          version: 1,
+        };
+        addDraft(draft);
+      }
     } catch (err) {
       if (inFlightRef.current?.requestId === requestId) inFlightRef.current = null;
       removePendingRequest(requestId);

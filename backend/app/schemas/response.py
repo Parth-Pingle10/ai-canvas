@@ -10,6 +10,39 @@ from pydantic import BaseModel, Field
 class DraftContentType(str, Enum):
     markdown = "markdown"
     latex = "latex"
+    diagram = "diagram"
+    shape = "shape"
+
+
+class ShapeType(str, Enum):
+    rectangle = "rectangle"
+    rounded_rectangle = "rounded_rectangle"
+    circle = "circle"
+    ellipse = "ellipse"
+    triangle = "triangle"
+    diamond = "diamond"
+
+
+class LayoutDirection(str, Enum):
+    top_to_bottom = "top_to_bottom"
+    left_to_right = "left_to_right"
+
+
+class DiagramNode(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    label: str = Field(default="", max_length=500)
+    shape_type: ShapeType = ShapeType.rectangle
+
+
+class DiagramEdge(BaseModel):
+    from_node: str = Field(min_length=1, max_length=128)
+    to_node: str = Field(min_length=1, max_length=128)
+    label: str = Field(default="", max_length=200)
+
+
+class ShapeData(BaseModel):
+    shape_type: ShapeType = ShapeType.rectangle
+    label: str = Field(default="", max_length=500)
 
 
 class DraftContent(BaseModel):
@@ -19,9 +52,13 @@ class DraftContent(BaseModel):
     as-is (see ai/ollama.py's recovery/error handling)."""
 
     type: DraftContentType
-    content: str
+    content: str = ""
     title: str = ""
     confidence: float = Field(ge=0, le=1)
+    layout_direction: LayoutDirection = LayoutDirection.top_to_bottom
+    nodes: list[DiagramNode] = Field(default_factory=list)
+    edges: list[DiagramEdge] = Field(default_factory=list)
+    shape: ShapeData | None = None
 
 
 class TokenUsage(BaseModel):

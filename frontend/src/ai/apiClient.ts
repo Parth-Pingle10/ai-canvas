@@ -10,13 +10,36 @@ import type { BoundingBox } from "../types/document";
 const API_BASE_URL: string =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 
-export type DraftContentType = "markdown" | "latex";
+import type { ShapeType } from "../types/document";
+
+export type DraftContentType = "markdown" | "latex" | "diagram" | "shape";
+
+export interface DiagramNode {
+  id: string;
+  label: string;
+  shape_type: ShapeType;
+}
+
+export interface DiagramEdge {
+  from_node: string;
+  to_node: string;
+  label?: string;
+}
+
+export interface ShapeData {
+  shape_type: ShapeType;
+  label?: string;
+}
 
 export interface DraftContent {
   type: DraftContentType;
   content: string;
   title: string;
   confidence: number;
+  layout_direction?: "top_to_bottom" | "left_to_right";
+  nodes?: DiagramNode[];
+  edges?: DiagramEdge[];
+  shape?: ShapeData;
 }
 
 export interface LatencyBreakdown {

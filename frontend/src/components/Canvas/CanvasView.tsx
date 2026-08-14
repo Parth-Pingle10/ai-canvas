@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BoundingBox, Point, Stroke, StrokeTool } from "../../types/document";
+import type {
+  BoundingBox,
+  CanvasConnector,
+  CanvasShape,
+  CanvasText,
+  Point,
+  ShapeType,
+  Stroke,
+  StrokeTool,
+} from "../../types/document";
 import { useCanvasStore } from "../../state/canvasStore";
 import { CanvasRenderer } from "../../canvas/CanvasRenderer";
 import {
@@ -10,23 +19,43 @@ import {
   zoomCameraAtPoint,
 } from "../../canvas/CoordinateSystem";
 import { panCamera } from "../../canvas/Camera";
-import { detectPanTrigger, FrameScheduler, getCoalescedEvents, pointerEventToWorldPoint } from "../../canvas/InputManager";
+import {
+  detectPanTrigger,
+  FrameScheduler,
+  getCoalescedEvents,
+  pointerEventToWorldPoint,
+} from "../../canvas/InputManager";
 import { MAX_ZOOM, MIN_ZOOM } from "../../types/tools";
-import { distanceToStroke, scalePoints, strokeIntersectsBox, translatePoints } from "../../utils/geometry";
+import {
+  distanceToSegment,
+  distanceToStroke,
+  scalePoints,
+  strokeIntersectsBox,
+  translatePoints,
+} from "../../utils/geometry";
 import { generateId } from "../../utils/id";
+import { boundsOfConnector, boundsOfShape, boundsOfText, resolveConnectorEndpoints } from "../../canvas/ShapeRenderer";
 
 type Handle = "nw" | "ne" | "sw" | "se";
 
 type GestureMode =
   | { kind: "idle" }
   | { kind: "draw"; stroke: Stroke }
-  | { kind: "erase"; erasedIds: Set<string> }
+  | { kind: "draw-shape"; startWorld: Point; shape: CanvasShape }
+  | { kind: "draw-connector"; startWorld: Point; connector: CanvasConnector }
+  | { kind: "erase"; erasedStrokeIds: Set<string>; erasedShapeIds: Set<string>; erasedConnectorIds: Set<string>; erasedTextIds: Set<string> }
   | { kind: "pan"; lastX: number; lastY: number }
   | {
       kind: "select-drag";
       startWorld: Point;
-      originals: Map<string, Stroke>;
-      live: Map<string, Stroke>;
+      originalStrokes: Map<string, Stroke>;
+      originalShapes: Map<string, CanvasShape>;
+      originalConnectors: Map<string, CanvasConnector>;
+      originalTexts: Map<string, CanvasText>;
+      liveStrokes: Map<string, Stroke>;
+      liveShapes: Map<string, CanvasShape>;
+      liveConnectors: Map<string, CanvasConnector>;
+      liveTexts: Map<string, CanvasText>;
       moved: boolean;
     }
   | { kind: "marquee"; startWorld: Point; current: BoundingBox }
@@ -34,8 +63,12 @@ type GestureMode =
       kind: "resize";
       handle: Handle;
       anchor: Point;
-      originals: Map<string, Stroke>;
-      live: Map<string, Stroke>;
+      originalStrokes: Map<string, Stroke>;
+      originalShapes: Map<string, CanvasShape>;
+      originalTexts: Map<string, CanvasText>;
+      liveStrokes: Map<string, Stroke>;
+      liveShapes: Map<string, CanvasShape>;
+      liveTexts: Map<string, CanvasText>;
       originalBounds: BoundingBox;
     };
 
@@ -53,6 +86,9 @@ export function CanvasView() {
   const [visibleStats, setVisibleStats] = useState({ visible: 0, total: 0 });
 
   const strokes = useCanvasStore((s) => s.strokes);
+  const shapes = useCanvasStore((s) => s.shapes);
+  const connectors = useCanvasStore((s) => s.connectors);
+  const textObjects = useCanvasStore((s) => s.textObjects);
   const camera = useCanvasStore((s) => s.camera);
   const tool = useCanvasStore((s) => s.tool);
   const toolSettings = useCanvasStore((s) => s.toolSettings);
@@ -60,14 +96,20 @@ export function CanvasView() {
   const setCamera = useCanvasStore((s) => s.setCamera);
   const setSelection = useCanvasStore((s) => s.setSelection);
   const addStroke = useCanvasStore((s) => s.addStroke);
-  const commitStrokes = useCanvasStore((s) => s.commitStrokes);
+  const addShape = useCanvasStore((s) => s.addShape);
+  const addConnector = useCanvasStore((s) => s.addConnector);
+  const addTextObject = useCanvasStore((s) => s.addTextObject);
+  const commitScene = useCanvasStore((s) => s.commitScene);
   const setViewportSize = useCanvasStore((s) => s.setViewportSize);
 
-  // Refs mirroring frequently-read store state, so pointer handlers (which
-  // are not React-reactive) always see the latest values without needing to
-  // be re-subscribed on every store change.
   const strokesRef = useRef(strokes);
   strokesRef.current = strokes;
+  const shapesRef = useRef(shapes);
+  shapesRef.current = shapes;
+  const connectorsRef = useRef(connectors);
+  connectorsRef.current = connectors;
+  const textObjectsRef = useRef(textObjects);
+  textObjectsRef.current = textObjects;
   const cameraRef = useRef(camera);
   cameraRef.current = camera;
   const toolRef = useRef(tool);
@@ -88,27 +130,51 @@ export function CanvasView() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
     let displayStrokes = strokesRef.current;
+    let displayShapes = shapesRef.current;
+    let displayConnectors = connectorsRef.current;
+    let displayTexts = textObjectsRef.current;
+
     let liveStroke: Stroke | null = null;
+    let liveShape: CanvasShape | null = null;
+    let liveConnector: CanvasConnector | null = null;
     let marquee: BoundingBox | null = null;
 
     if (gesture.kind === "draw") {
       liveStroke = gesture.stroke;
-    } else if (gesture.kind === "erase" && gesture.erasedIds.size > 0) {
-      displayStrokes = displayStrokes.filter((s) => !gesture.erasedIds.has(s.id));
-    } else if (gesture.kind === "select-drag" || gesture.kind === "resize") {
-      const overrides = gesture.live;
-      displayStrokes = displayStrokes.map((s) => overrides.get(s.id) ?? s);
+    } else if (gesture.kind === "draw-shape") {
+      liveShape = gesture.shape;
+    } else if (gesture.kind === "draw-connector") {
+      liveConnector = gesture.connector;
+    } else if (gesture.kind === "erase") {
+      displayStrokes = displayStrokes.filter((s) => !gesture.erasedStrokeIds.has(s.id));
+      displayShapes = displayShapes.filter((s) => !gesture.erasedShapeIds.has(s.id));
+      displayConnectors = displayConnectors.filter((c) => !gesture.erasedConnectorIds.has(c.id));
+      displayTexts = displayTexts.filter((t) => !gesture.erasedTextIds.has(t.id));
+    } else if (gesture.kind === "select-drag") {
+      displayStrokes = displayStrokes.map((s) => gesture.liveStrokes.get(s.id) ?? s);
+      displayShapes = displayShapes.map((s) => gesture.liveShapes.get(s.id) ?? s);
+      displayConnectors = displayConnectors.map((c) => gesture.liveConnectors.get(c.id) ?? c);
+      displayTexts = displayTexts.map((t) => gesture.liveTexts.get(t.id) ?? t);
+    } else if (gesture.kind === "resize") {
+      displayStrokes = displayStrokes.map((s) => gesture.liveStrokes.get(s.id) ?? s);
+      displayShapes = displayShapes.map((s) => gesture.liveShapes.get(s.id) ?? s);
+      displayTexts = displayTexts.map((t) => gesture.liveTexts.get(t.id) ?? t);
     } else if (gesture.kind === "marquee") {
       marquee = gesture.current;
     }
 
     const { visibleCount, totalCount } = renderer.render({
       strokes: displayStrokes,
+      shapes: displayShapes,
+      connectors: displayConnectors,
+      textObjects: displayTexts,
       camera: cameraRef.current,
       viewportWidth: viewportRef.current.width,
       viewportHeight: viewportRef.current.height,
       devicePixelRatio: dpr,
       liveStroke,
+      liveShape,
+      liveConnector,
       selectedIds: new Set(selectedIdsRef.current),
       marquee,
       showGrid: true,
@@ -120,7 +186,6 @@ export function CanvasView() {
     );
   }, []);
 
-  // Mount: create renderer + scheduler, observe resize.
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
     const renderer = new CanvasRenderer(canvasRef.current);
@@ -140,13 +205,11 @@ export function CanvasView() {
     const ro = new ResizeObserver(resize);
     ro.observe(containerRef.current);
     return () => ro.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [draw, scheduleRender, setViewportSize]);
 
-  // Re-render whenever committed state changes.
   useEffect(() => {
     scheduleRender();
-  }, [strokes, camera, selectedIds, scheduleRender]);
+  }, [strokes, shapes, connectors, textObjects, camera, selectedIds, scheduleRender]);
 
   const worldFromEvent = useCallback((clientX: number, clientY: number): Point => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -161,36 +224,93 @@ export function CanvasView() {
 
   const pickRadiusWorld = useCallback(() => PICK_RADIUS_SCREEN_PX / cameraRef.current.zoom, []);
 
-  const hitTestAt = useCallback((world: Point): Stroke | null => {
-    const radius = pickRadiusWorld();
-    const list = strokesRef.current;
-    for (let i = list.length - 1; i >= 0; i--) {
-      const s = list[i];
-      if (distanceToStroke(world.x, world.y, s) <= Math.max(radius, s.width / 2 + radius * 0.4)) {
-        return s;
-      }
-    }
-    return null;
-  }, [pickRadiusWorld]);
+  const hitTestAt = useCallback(
+    (world: Point): { id: string; type: "stroke" | "shape" | "connector" | "text" } | null => {
+      const radius = pickRadiusWorld();
 
-  const handleAt = useCallback((world: Point): Handle | null => {
-    if (selectedIdsRef.current.length === 0) return null;
-    const selected = strokesRef.current.filter((s) => selectedIdsRef.current.includes(s.id));
-    if (selected.length === 0) return null;
-    let bounds = selected[0].bounds;
-    for (let i = 1; i < selected.length; i++) bounds = unionBounds(bounds, selected[i].bounds);
-    const r = 10 / cameraRef.current.zoom;
-    const corners: [Handle, number, number][] = [
-      ["nw", bounds.minX, bounds.minY],
-      ["ne", bounds.maxX, bounds.minY],
-      ["sw", bounds.minX, bounds.maxY],
-      ["se", bounds.maxX, bounds.maxY],
-    ];
-    for (const [h, x, y] of corners) {
-      if (Math.hypot(world.x - x, world.y - y) <= r) return h;
-    }
-    return null;
+      // Test text objects
+      for (let i = textObjectsRef.current.length - 1; i >= 0; i--) {
+        const t = textObjectsRef.current[i];
+        if (
+          world.x >= t.x - radius &&
+          world.x <= t.x + t.width + radius &&
+          world.y >= t.y - radius &&
+          world.y <= t.y + t.height + radius
+        ) {
+          return { id: t.id, type: "text" };
+        }
+      }
+
+      // Test shapes
+      for (let i = shapesRef.current.length - 1; i >= 0; i--) {
+        const s = shapesRef.current[i];
+        if (
+          world.x >= s.x - radius &&
+          world.x <= s.x + s.width + radius &&
+          world.y >= s.y - radius &&
+          world.y <= s.y + s.height + radius
+        ) {
+          return { id: s.id, type: "shape" };
+        }
+      }
+
+      // Test connectors
+      const shapesMap = new Map(shapesRef.current.map((s) => [s.id, s]));
+      for (let i = connectorsRef.current.length - 1; i >= 0; i--) {
+        const c = connectorsRef.current[i];
+        const { start, end } = resolveConnectorEndpoints(c, shapesMap);
+        if (distanceToSegment(world.x, world.y, start.x, start.y, end.x, end.y) <= radius + 2) {
+          return { id: c.id, type: "connector" };
+        }
+      }
+
+      // Test strokes
+      for (let i = strokesRef.current.length - 1; i >= 0; i--) {
+        const s = strokesRef.current[i];
+        if (distanceToStroke(world.x, world.y, s) <= Math.max(radius, s.width / 2 + radius * 0.4)) {
+          return { id: s.id, type: "stroke" };
+        }
+      }
+
+      return null;
+    },
+    [pickRadiusWorld]
+  );
+
+  const getCombinedSelectedBounds = useCallback((): BoundingBox | null => {
+    const sel = new Set(selectedIdsRef.current);
+    if (sel.size === 0) return null;
+    const boundsList: BoundingBox[] = [];
+
+    strokesRef.current.filter((s) => sel.has(s.id)).forEach((s) => boundsList.push(s.bounds));
+    shapesRef.current.filter((s) => sel.has(s.id)).forEach((s) => boundsList.push(s.bounds));
+    connectorsRef.current.filter((c) => sel.has(c.id)).forEach((c) => boundsList.push(c.bounds));
+    textObjectsRef.current.filter((t) => sel.has(t.id)).forEach((t) => boundsList.push(t.bounds));
+
+    if (boundsList.length === 0) return null;
+    let b = boundsList[0];
+    for (let i = 1; i < boundsList.length; i++) b = unionBounds(b, boundsList[i]);
+    return b;
   }, []);
+
+  const handleAt = useCallback(
+    (world: Point): Handle | null => {
+      const bounds = getCombinedSelectedBounds();
+      if (!bounds) return null;
+      const r = 10 / cameraRef.current.zoom;
+      const corners: [Handle, number, number][] = [
+        ["nw", bounds.minX, bounds.minY],
+        ["ne", bounds.maxX, bounds.minY],
+        ["sw", bounds.minX, bounds.maxY],
+        ["se", bounds.maxX, bounds.maxY],
+      ];
+      for (const [h, x, y] of corners) {
+        if (Math.hypot(world.x - x, world.y - y) <= r) return h;
+      }
+      return null;
+    },
+    [getCombinedSelectedBounds]
+  );
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -209,9 +329,7 @@ export function CanvasView() {
       if (currentTool === "select") {
         const handle = handleAt(world);
         if (handle) {
-          const selected = strokesRef.current.filter((s) => selectedIdsRef.current.includes(s.id));
-          let bounds = selected[0].bounds;
-          for (let i = 1; i < selected.length; i++) bounds = unionBounds(bounds, selected[i].bounds);
+          const bounds = getCombinedSelectedBounds()!;
           const anchor =
             handle === "nw"
               ? { x: bounds.maxX, y: bounds.maxY }
@@ -220,13 +338,22 @@ export function CanvasView() {
               : handle === "sw"
               ? { x: bounds.maxX, y: bounds.minY }
               : { x: bounds.minX, y: bounds.minY };
-          const originals = new Map(selected.map((s) => [s.id, s] as const));
+
+          const sel = new Set(selectedIdsRef.current);
+          const origStrokes = new Map(strokesRef.current.filter((s) => sel.has(s.id)).map((s) => [s.id, s]));
+          const origShapes = new Map(shapesRef.current.filter((s) => sel.has(s.id)).map((s) => [s.id, s]));
+          const origTexts = new Map(textObjectsRef.current.filter((t) => sel.has(t.id)).map((t) => [t.id, t]));
+
           gestureRef.current = {
             kind: "resize",
             handle,
             anchor,
-            originals,
-            live: new Map(originals),
+            originalStrokes: origStrokes,
+            originalShapes: origShapes,
+            originalTexts: origTexts,
+            liveStrokes: new Map(origStrokes),
+            liveShapes: new Map(origShapes),
+            liveTexts: new Map(origTexts),
             originalBounds: bounds,
           };
           return;
@@ -244,14 +371,24 @@ export function CanvasView() {
             nextSelection = selectedIdsRef.current.includes(hit.id) ? selectedIdsRef.current : [hit.id];
           }
           setSelection(nextSelection);
-          const originals = new Map(
-            strokesRef.current.filter((s) => nextSelection.includes(s.id)).map((s) => [s.id, s] as const)
-          );
+
+          const sel = new Set(nextSelection);
+          const origStrokes = new Map(strokesRef.current.filter((s) => sel.has(s.id)).map((s) => [s.id, s]));
+          const origShapes = new Map(shapesRef.current.filter((s) => sel.has(s.id)).map((s) => [s.id, s]));
+          const origConnectors = new Map(connectorsRef.current.filter((c) => sel.has(c.id)).map((c) => [c.id, c]));
+          const origTexts = new Map(textObjectsRef.current.filter((t) => sel.has(t.id)).map((t) => [t.id, t]));
+
           gestureRef.current = {
             kind: "select-drag",
             startWorld: world,
-            originals,
-            live: new Map(originals),
+            originalStrokes: origStrokes,
+            originalShapes: origShapes,
+            originalConnectors: origConnectors,
+            originalTexts: origTexts,
+            liveStrokes: new Map(origStrokes),
+            liveShapes: new Map(origShapes),
+            liveConnectors: new Map(origConnectors),
+            liveTexts: new Map(origTexts),
             moved: false,
           };
         } else {
@@ -267,21 +404,118 @@ export function CanvasView() {
       }
 
       if (currentTool === "eraser") {
-        const erasedIds = new Set<string>();
-        const radius = pickRadiusWorld();
-        for (const s of strokesRef.current) {
-          if (distanceToStroke(world.x, world.y, s) <= Math.max(radius, s.width / 2)) {
-            erasedIds.add(s.id);
-          }
+        const erasedStrokeIds = new Set<string>();
+        const erasedShapeIds = new Set<string>();
+        const erasedConnectorIds = new Set<string>();
+        const erasedTextIds = new Set<string>();
+        const hit = hitTestAt(world);
+        if (hit) {
+          if (hit.type === "stroke") erasedStrokeIds.add(hit.id);
+          else if (hit.type === "shape") erasedShapeIds.add(hit.id);
+          else if (hit.type === "connector") erasedConnectorIds.add(hit.id);
+          else if (hit.type === "text") erasedTextIds.add(hit.id);
         }
-        gestureRef.current = { kind: "erase", erasedIds };
+        gestureRef.current = { kind: "erase", erasedStrokeIds, erasedShapeIds, erasedConnectorIds, erasedTextIds };
         scheduleRender();
+        return;
+      }
+
+      if (
+        currentTool === "rectangle" ||
+        currentTool === "circle" ||
+        currentTool === "triangle" ||
+        currentTool === "diamond"
+      ) {
+        const settings = toolSettingsRef.current[currentTool];
+        const shapeType: ShapeType =
+          currentTool === "rectangle"
+            ? "rectangle"
+            : currentTool === "circle"
+            ? "circle"
+            : currentTool === "triangle"
+            ? "triangle"
+            : "diamond";
+
+        const shape: CanvasShape = {
+          id: generateId("shape"),
+          type: "shape",
+          shapeType,
+          x: world.x,
+          y: world.y,
+          width: 1,
+          height: 1,
+          strokeColor: settings.color,
+          fillColor: "#ffffff",
+          strokeWidth: settings.width,
+          opacity: settings.opacity,
+          bounds: { minX: world.x, minY: world.y, maxX: world.x + 1, maxY: world.y + 1 },
+          status: "confirmed",
+          createdAt: Date.now(),
+          version: 1,
+        };
+        gestureRef.current = { kind: "draw-shape", startWorld: world, shape };
+        scheduleRender();
+        return;
+      }
+
+      if (currentTool === "arrow" || currentTool === "line" || currentTool === "connector") {
+        const settings = toolSettingsRef.current[currentTool];
+        const connector: CanvasConnector = {
+          id: generateId("conn"),
+          type: "connector",
+          startX: world.x,
+          startY: world.y,
+          endX: world.x,
+          endY: world.y,
+          routing: currentTool === "connector" ? "orthogonal" : "straight",
+          strokeColor: settings.color,
+          strokeWidth: settings.width,
+          startArrow: false,
+          endArrow: currentTool !== "line",
+          bounds: { minX: world.x, minY: world.y, maxX: world.x, maxY: world.y },
+          status: "confirmed",
+          createdAt: Date.now(),
+          version: 1,
+        };
+        gestureRef.current = { kind: "draw-connector", startWorld: world, connector };
+        scheduleRender();
+        return;
+      }
+
+      if (currentTool === "text") {
+        const settings = toolSettingsRef.current.text;
+        const text = window.prompt("Enter text for canvas:");
+        if (text) {
+          const textObj: CanvasText = {
+            id: generateId("text"),
+            type: "text",
+            x: world.x,
+            y: world.y,
+            width: Math.max(100, text.length * 10),
+            height: 30,
+            text,
+            fontSize: settings.width || 16,
+            fontColor: settings.color,
+            bounds: { minX: world.x, minY: world.y, maxX: world.x + 150, maxY: world.y + 30 },
+            status: "confirmed",
+            createdAt: Date.now(),
+            version: 1,
+          };
+          textObj.bounds = boundsOfText(textObj);
+          addTextObject(textObj);
+        }
         return;
       }
 
       // Drawing tools: pen, pencil, highlighter.
       const settings = toolSettingsRef.current[currentTool];
-      const point: Point = { ...world, pressure: e.pressure || 1, tiltX: e.tiltX ?? 0, tiltY: e.tiltY ?? 0, timestamp: Date.now() };
+      const point: Point = {
+        ...world,
+        pressure: e.pressure || 1,
+        tiltX: e.tiltX ?? 0,
+        tiltY: e.tiltY ?? 0,
+        timestamp: Date.now(),
+      };
       const stroke: Stroke = {
         id: generateId("stroke"),
         type: "stroke",
@@ -297,7 +531,7 @@ export function CanvasView() {
       gestureRef.current = { kind: "draw", stroke };
       scheduleRender();
     },
-    [worldFromEvent, handleAt, hitTestAt, pickRadiusWorld, setSelection, scheduleRender]
+    [worldFromEvent, handleAt, getCombinedSelectedBounds, hitTestAt, setSelection, scheduleRender, addTextObject]
   );
 
   const onPointerMove = useCallback(
@@ -317,7 +551,13 @@ export function CanvasView() {
         const events = getCoalescedEvents(e);
         const rect = canvasRef.current!.getBoundingClientRect();
         const newPoints: Point[] = events.map((ev) =>
-          pointerEventToWorldPoint(ev, rect, cameraRef.current, viewportRef.current.width, viewportRef.current.height)
+          pointerEventToWorldPoint(
+            ev,
+            rect,
+            cameraRef.current,
+            viewportRef.current.width,
+            viewportRef.current.height
+          )
         );
         const points = [...gesture.stroke.points, ...newPoints];
         const stroke: Stroke = {
@@ -331,18 +571,54 @@ export function CanvasView() {
         return;
       }
 
+      if (gesture.kind === "draw-shape") {
+        const world = worldFromEvent(e.clientX, e.clientY);
+        const minX = Math.min(gesture.startWorld.x, world.x);
+        const minY = Math.min(gesture.startWorld.y, world.y);
+        const w = Math.max(10, Math.abs(world.x - gesture.startWorld.x));
+        const h = Math.max(10, Math.abs(world.y - gesture.startWorld.y));
+        const shape: CanvasShape = {
+          ...gesture.shape,
+          x: minX,
+          y: minY,
+          width: w,
+          height: h,
+          bounds: { minX, minY, maxX: minX + w, maxY: minY + h },
+        };
+        shape.bounds = boundsOfShape(shape);
+        gestureRef.current = { ...gesture, shape };
+        scheduleRender();
+        return;
+      }
+
+      if (gesture.kind === "draw-connector") {
+        const world = worldFromEvent(e.clientX, e.clientY);
+        const connector: CanvasConnector = {
+          ...gesture.connector,
+          endX: world.x,
+          endY: world.y,
+          bounds: {
+            minX: Math.min(gesture.startWorld.x, world.x) - 5,
+            minY: Math.min(gesture.startWorld.y, world.y) - 5,
+            maxX: Math.max(gesture.startWorld.x, world.x) + 5,
+            maxY: Math.max(gesture.startWorld.y, world.y) + 5,
+          },
+        };
+        gestureRef.current = { ...gesture, connector };
+        scheduleRender();
+        return;
+      }
+
       if (gesture.kind === "erase") {
         const world = worldFromEvent(e.clientX, e.clientY);
-        const radius = pickRadiusWorld();
-        let changed = false;
-        for (const s of strokesRef.current) {
-          if (gesture.erasedIds.has(s.id)) continue;
-          if (distanceToStroke(world.x, world.y, s) <= Math.max(radius, s.width / 2)) {
-            gesture.erasedIds.add(s.id);
-            changed = true;
-          }
+        const hit = hitTestAt(world);
+        if (hit) {
+          if (hit.type === "stroke") gesture.erasedStrokeIds.add(hit.id);
+          else if (hit.type === "shape") gesture.erasedShapeIds.add(hit.id);
+          else if (hit.type === "connector") gesture.erasedConnectorIds.add(hit.id);
+          else if (hit.type === "text") gesture.erasedTextIds.add(hit.id);
+          scheduleRender();
         }
-        if (changed) scheduleRender();
         return;
       }
 
@@ -351,12 +627,58 @@ export function CanvasView() {
         const dx = world.x - gesture.startWorld.x;
         const dy = world.y - gesture.startWorld.y;
         const moved = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5 || gesture.moved;
-        // Always recompute from the pristine originals + total delta, so
-        // successive move events compose correctly instead of drifting.
-        gesture.originals.forEach((orig, id) => {
+
+        gesture.originalStrokes.forEach((orig, id) => {
           const points = translatePoints(orig.points, dx, dy);
-          gesture.live.set(id, { ...orig, points, bounds: boundsOfPoints(points), version: orig.version + 1 });
+          gesture.liveStrokes.set(id, {
+            ...orig,
+            points,
+            bounds: boundsOfPoints(points),
+            version: orig.version + 1,
+          });
         });
+
+        gesture.originalShapes.forEach((orig, id) => {
+          const shape: CanvasShape = {
+            ...orig,
+            x: orig.x + dx,
+            y: orig.y + dy,
+            version: orig.version + 1,
+            bounds: { minX: orig.x + dx, minY: orig.y + dy, maxX: orig.x + orig.width + dx, maxY: orig.y + orig.height + dy },
+          };
+          shape.bounds = boundsOfShape(shape);
+          gesture.liveShapes.set(id, shape);
+        });
+
+        gesture.originalConnectors.forEach((orig, id) => {
+          const conn: CanvasConnector = {
+            ...orig,
+            startX: orig.startX + dx,
+            startY: orig.startY + dy,
+            endX: orig.endX + dx,
+            endY: orig.endY + dy,
+            version: orig.version + 1,
+            bounds: {
+              minX: Math.min(orig.startX + dx, orig.endX + dx) - 5,
+              minY: Math.min(orig.startY + dy, orig.endY + dy) - 5,
+              maxX: Math.max(orig.startX + dx, orig.endX + dx) + 5,
+              maxY: Math.max(orig.startY + dy, orig.endY + dy) + 5,
+            },
+          };
+          gesture.liveConnectors.set(id, conn);
+        });
+
+        gesture.originalTexts.forEach((orig, id) => {
+          const t: CanvasText = {
+            ...orig,
+            x: orig.x + dx,
+            y: orig.y + dy,
+            version: orig.version + 1,
+            bounds: { minX: orig.x + dx, minY: orig.y + dy, maxX: orig.x + orig.width + dx, maxY: orig.y + orig.height + dy },
+          };
+          gesture.liveTexts.set(id, t);
+        });
+
         gestureRef.current = { ...gesture, moved };
         scheduleRender();
         return;
@@ -371,11 +693,11 @@ export function CanvasView() {
         const origH = Math.max(1, originalBounds.maxY - originalBounds.minY);
         const scaleX = newW / origW;
         const scaleY = newH / origH;
-        // Recompute from the pristine originals + total scale each move.
-        gesture.originals.forEach((orig, id) => {
+
+        gesture.originalStrokes.forEach((orig, id) => {
           const points = scalePoints(orig.points, anchor, scaleX, scaleY);
           const width = clamp(orig.width * ((scaleX + scaleY) / 2), 0.5, 400);
-          gesture.live.set(id, {
+          gesture.liveStrokes.set(id, {
             ...orig,
             points,
             width,
@@ -383,6 +705,36 @@ export function CanvasView() {
             version: orig.version + 1,
           });
         });
+
+        gesture.originalShapes.forEach((orig, id) => {
+          const newX = anchor.x + (orig.x - anchor.x) * scaleX;
+          const newY = anchor.y + (orig.y - anchor.y) * scaleY;
+          const shape: CanvasShape = {
+            ...orig,
+            x: Math.min(newX, newX + orig.width * scaleX),
+            y: Math.min(newY, newY + orig.height * scaleY),
+            width: Math.max(20, orig.width * scaleX),
+            height: Math.max(20, orig.height * scaleY),
+            version: orig.version + 1,
+            bounds: { minX: newX, minY: newY, maxX: newX + orig.width * scaleX, maxY: newY + orig.height * scaleY },
+          };
+          shape.bounds = boundsOfShape(shape);
+          gesture.liveShapes.set(id, shape);
+        });
+
+        gesture.originalTexts.forEach((orig, id) => {
+          const newX = anchor.x + (orig.x - anchor.x) * scaleX;
+          const newY = anchor.y + (orig.y - anchor.y) * scaleY;
+          gesture.liveTexts.set(id, {
+            ...orig,
+            x: newX,
+            y: newY,
+            width: Math.max(20, orig.width * scaleX),
+            height: Math.max(15, orig.height * scaleY),
+            version: orig.version + 1,
+          });
+        });
+
         scheduleRender();
         return;
       }
@@ -400,7 +752,7 @@ export function CanvasView() {
         return;
       }
     },
-    [worldFromEvent, pickRadiusWorld, setCamera, scheduleRender]
+    [worldFromEvent, hitTestAt, setCamera, scheduleRender]
   );
 
   const onPointerUp = useCallback(
@@ -409,38 +761,91 @@ export function CanvasView() {
       try {
         (e.target as Element).releasePointerCapture(e.pointerId);
       } catch {
-        // Pointer capture may already be released — safe to ignore.
+        // safe to ignore
       }
 
       if (gesture.kind === "draw") {
         if (gesture.stroke.points.length > 0) {
           addStroke(gesture.stroke);
         }
-      } else if (gesture.kind === "erase") {
-        if (gesture.erasedIds.size > 0) {
-          commitStrokes(strokesRef.current.filter((s) => !gesture.erasedIds.has(s.id)));
+      } else if (gesture.kind === "draw-shape") {
+        if (gesture.shape.width > 5 && gesture.shape.height > 5) {
+          addShape(gesture.shape);
         }
+      } else if (gesture.kind === "draw-connector") {
+        const c = gesture.connector;
+        if (Math.hypot(c.endX - c.startX, c.endY - c.startY) > 5) {
+          addConnector(gesture.connector);
+        }
+      } else if (gesture.kind === "erase") {
+        const nextStrokes = strokesRef.current.filter((s) => !gesture.erasedStrokeIds.has(s.id));
+        const nextShapes = shapesRef.current.filter((s) => !gesture.erasedShapeIds.has(s.id));
+        const nextConnectors = connectorsRef.current.filter((c) => !gesture.erasedConnectorIds.has(c.id));
+        const nextTexts = textObjectsRef.current.filter((t) => !gesture.erasedTextIds.has(t.id));
+        commitScene({
+          strokes: nextStrokes,
+          shapes: nextShapes,
+          connectors: nextConnectors,
+          textObjects: nextTexts,
+        });
       } else if (gesture.kind === "select-drag") {
         if (gesture.moved) {
-          const overrides = gesture.live;
-          commitStrokes(strokesRef.current.map((s) => overrides.get(s.id) ?? s));
+          const nextStrokes = strokesRef.current.map((s) => gesture.liveStrokes.get(s.id) ?? s);
+          const nextShapes = shapesRef.current.map((s) => gesture.liveShapes.get(s.id) ?? s);
+          const nextConnectors = connectorsRef.current.map((c) => gesture.liveConnectors.get(c.id) ?? c);
+          const nextTexts = textObjectsRef.current.map((t) => gesture.liveTexts.get(t.id) ?? t);
+          commitScene({
+            strokes: nextStrokes,
+            shapes: nextShapes,
+            connectors: nextConnectors,
+            textObjects: nextTexts,
+          });
         }
       } else if (gesture.kind === "resize") {
-        const overrides = gesture.live;
-        commitStrokes(strokesRef.current.map((s) => overrides.get(s.id) ?? s));
+        const nextStrokes = strokesRef.current.map((s) => gesture.liveStrokes.get(s.id) ?? s);
+        const nextShapes = shapesRef.current.map((s) => gesture.liveShapes.get(s.id) ?? s);
+        const nextTexts = textObjectsRef.current.map((t) => gesture.liveTexts.get(t.id) ?? t);
+        commitScene({
+          strokes: nextStrokes,
+          shapes: nextShapes,
+          textObjects: nextTexts,
+        });
       } else if (gesture.kind === "marquee") {
         const box = gesture.current;
         const additive = e.shiftKey || e.metaKey || e.ctrlKey;
-        const hits = strokesRef.current.filter((s) => strokeIntersectsBox(s, box)).map((s) => s.id);
-        if (hits.length > 0) {
-          setSelection(additive ? Array.from(new Set([...selectedIdsRef.current, ...hits])) : hits);
+        const hitStrokes = strokesRef.current.filter((s) => strokeIntersectsBox(s, box)).map((s) => s.id);
+        const hitShapes = shapesRef.current
+          .filter(
+            (s) =>
+              s.x + s.width >= box.minX &&
+              s.x <= box.maxX &&
+              s.y + s.height >= box.minY &&
+              s.y <= box.maxY
+          )
+          .map((s) => s.id);
+        const hitConnectors = connectorsRef.current
+          .filter((c) => c.bounds.maxX >= box.minX && c.bounds.minX <= box.maxX && c.bounds.maxY >= box.minY && c.bounds.minY <= box.maxY)
+          .map((c) => c.id);
+        const hitTexts = textObjectsRef.current
+          .filter(
+            (t) =>
+              t.x + t.width >= box.minX &&
+              t.x <= box.maxX &&
+              t.y + t.height >= box.minY &&
+              t.y <= box.maxY
+          )
+          .map((t) => t.id);
+
+        const allHits = [...hitStrokes, ...hitShapes, ...hitConnectors, ...hitTexts];
+        if (allHits.length > 0) {
+          setSelection(additive ? Array.from(new Set([...selectedIdsRef.current, ...allHits])) : allHits);
         }
       }
 
       gestureRef.current = { kind: "idle" };
       scheduleRender();
     },
-    [addStroke, commitStrokes, setSelection, scheduleRender]
+    [addStroke, addShape, addConnector, commitScene, setSelection, scheduleRender]
   );
 
   const onWheel = useCallback(
@@ -450,7 +855,6 @@ export function CanvasView() {
       const pivot = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 
       if (e.ctrlKey || e.metaKey) {
-        // Pinch-zoom on trackpads is delivered as wheel+ctrlKey.
         const factor = Math.exp(-e.deltaY * 0.01);
         setCamera(
           zoomCameraAtPoint(
@@ -471,7 +875,6 @@ export function CanvasView() {
         return;
       }
 
-      // Plain wheel: two-finger trackpad pan (deltaX/deltaY), or mouse wheel zoom.
       if (Math.abs(e.deltaX) > 0 || e.deltaMode !== 0) {
         setCamera(panCamera(cameraRef.current, e.deltaX, e.deltaY));
       } else {
@@ -492,7 +895,6 @@ export function CanvasView() {
     [setCamera]
   );
 
-  // Space-to-pan tracking.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === "Space" && !isTypingTarget(e.target)) {
@@ -516,6 +918,7 @@ export function CanvasView() {
   }, []);
 
   const cursor = cursorForTool(tool, spaceHeldRef.current);
+  const totalObjCount = strokes.length + shapes.length + connectors.length + textObjects.length;
 
   return (
     <div ref={containerRef} className="canvas-container">
@@ -531,7 +934,7 @@ export function CanvasView() {
         onContextMenu={(e) => e.preventDefault()}
       />
       <div className="canvas-stats" aria-hidden="true">
-        {visibleStats.visible}/{visibleStats.total} strokes visible · zoom{" "}
+        {visibleStats.visible}/{totalObjCount} objects visible · zoom{" "}
         {(camera.zoom * 100).toFixed(0)}%
       </div>
     </div>
@@ -549,5 +952,6 @@ function cursorForTool(tool: string, spaceHeld: boolean): string {
   if (spaceHeld || tool === "hand") return "grab";
   if (tool === "select") return "default";
   if (tool === "eraser") return "cell";
+  if (tool === "text") return "text";
   return "crosshair";
 }

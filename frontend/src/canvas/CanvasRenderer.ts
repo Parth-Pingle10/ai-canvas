@@ -1,16 +1,31 @@
-import type { BoundingBox, Camera, Stroke } from "../types/document";
+import type {
+  BoundingBox,
+  Camera,
+  CanvasConnector,
+  CanvasShape,
+  CanvasText,
+  Stroke,
+} from "../types/document";
 import { boundsIntersect } from "./CoordinateSystem";
 import { drawHandle, drawSelectionBox, drawStroke } from "./StrokeRenderer";
+import { drawCanvasText, drawConnector, drawShape } from "./ShapeRenderer";
 
 export interface RenderInput {
   strokes: Stroke[];
+  shapes?: CanvasShape[];
+  connectors?: CanvasConnector[];
+  textObjects?: CanvasText[];
   camera: Camera;
   viewportWidth: number;
   viewportHeight: number;
   devicePixelRatio: number;
   /** In-progress stroke being drawn right now (not yet committed to the document). */
   liveStroke: Stroke | null;
-  /** Selected stroke ids, for drawing bounding box + handles. */
+  /** In-progress shape being drawn right now. */
+  liveShape?: CanvasShape | null;
+  /** In-progress connector being drawn right now. */
+  liveConnector?: CanvasConnector | null;
+  /** Selected element ids (strokes, shapes, connectors, text), for drawing bounding box + handles. */
   selectedIds: Set<string>;
   /** Marquee selection rectangle, in world space, while dragging. */
   marquee: BoundingBox | null;
@@ -44,6 +59,10 @@ export class CanvasRenderer {
   render(input: RenderInput): { visibleCount: number; totalCount: number } {
     const { ctx } = this;
     const { camera, viewportWidth, viewportHeight, devicePixelRatio: dpr } = input;
+    const strokes = input.strokes ?? [];
+    const shapes = input.shapes ?? [];
+    const connectors = input.connectors ?? [];
+    const textObjects = input.textObjects ?? [];
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = "#ffffff";
@@ -64,13 +83,52 @@ export class CanvasRenderer {
       this.drawGrid(camera, viewportWidth, viewportHeight);
     }
 
-    // Viewport culling: only draw strokes whose bounds intersect the visible
-    // world-space rectangle. Cheap O(n) scan is plenty fast up to tens of
-    // thousands of strokes; see docs/CANVAS_ARCHITECTURE.md for the tradeoff.
     const visibleWorldBounds = this.visibleWorldBounds(camera, viewportWidth, viewportHeight);
+    const shapesMap = new Map<string, CanvasShape>();
+    for (const shape of shapes) {
+      shapesMap.set(shape.id, shape);
+    }
+    if (input.liveShape) {
+      shapesMap.set(input.liveShape.id, input.liveShape);
+    }
 
     let visibleCount = 0;
-    for (const stroke of input.strokes) {
+    const totalCount = strokes.length + shapes.length + connectors.length + textObjects.length;
+
+    // 1. Draw Connectors (behind shapes so connectors anchor smoothly)
+    for (const connector of connectors) {
+      if (!boundsIntersect(connector.bounds, visibleWorldBounds)) continue;
+      const isDraft = connector.status === "draft";
+      drawConnector(ctx, connector, shapesMap, camera.zoom, isDraft);
+      visibleCount++;
+    }
+
+    if (input.liveConnector) {
+      drawConnector(ctx, input.liveConnector, shapesMap, camera.zoom, false);
+    }
+
+    // 2. Draw Shapes
+    for (const shape of shapes) {
+      if (!boundsIntersect(shape.bounds, visibleWorldBounds)) continue;
+      const isDraft = shape.status === "draft";
+      drawShape(ctx, shape, camera.zoom, isDraft);
+      visibleCount++;
+    }
+
+    if (input.liveShape) {
+      drawShape(ctx, input.liveShape, camera.zoom, false);
+    }
+
+    // 3. Draw Text Objects
+    for (const textObj of textObjects) {
+      if (!boundsIntersect(textObj.bounds, visibleWorldBounds)) continue;
+      const isDraft = textObj.status === "draft";
+      drawCanvasText(ctx, textObj, camera.zoom, isDraft);
+      visibleCount++;
+    }
+
+    // 4. Draw Strokes
+    for (const stroke of strokes) {
       if (!boundsIntersect(stroke.bounds, visibleWorldBounds)) continue;
       drawStroke(ctx, stroke);
       visibleCount++;
@@ -80,14 +138,32 @@ export class CanvasRenderer {
       drawStroke(ctx, input.liveStroke);
     }
 
+    // 5. Draw Selection Highlights and Handles
     if (input.selectedIds.size > 0) {
-      for (const stroke of input.strokes) {
+      const selectedBoundsList: BoundingBox[] = [];
+
+      for (const stroke of strokes) {
         if (!input.selectedIds.has(stroke.id)) continue;
         drawSelectionBox(ctx, stroke.bounds, camera.zoom);
+        selectedBoundsList.push(stroke.bounds);
       }
-      const combined = combinedBounds(
-        input.strokes.filter((s) => input.selectedIds.has(s.id))
-      );
+      for (const shape of shapes) {
+        if (!input.selectedIds.has(shape.id)) continue;
+        drawSelectionBox(ctx, shape.bounds, camera.zoom);
+        selectedBoundsList.push(shape.bounds);
+      }
+      for (const connector of connectors) {
+        if (!input.selectedIds.has(connector.id)) continue;
+        drawSelectionBox(ctx, connector.bounds, camera.zoom);
+        selectedBoundsList.push(connector.bounds);
+      }
+      for (const textObj of textObjects) {
+        if (!input.selectedIds.has(textObj.id)) continue;
+        drawSelectionBox(ctx, textObj.bounds, camera.zoom);
+        selectedBoundsList.push(textObj.bounds);
+      }
+
+      const combined = combinedBoundsFromList(selectedBoundsList);
       if (combined && input.selectedIds.size > 1) {
         drawSelectionBox(ctx, combined, camera.zoom);
       }
@@ -99,6 +175,7 @@ export class CanvasRenderer {
       }
     }
 
+    // 6. Draw Marquee
     if (input.marquee) {
       const ctx2 = this.ctx;
       ctx2.save();
@@ -111,7 +188,7 @@ export class CanvasRenderer {
       ctx2.restore();
     }
 
-    return { visibleCount, totalCount: input.strokes.length };
+    return { visibleCount, totalCount };
   }
 
   private visibleWorldBounds(
@@ -121,7 +198,7 @@ export class CanvasRenderer {
   ): BoundingBox {
     const halfW = viewportWidth / 2 / camera.zoom;
     const halfH = viewportHeight / 2 / camera.zoom;
-    // Small padding so strokes just off-screen don't pop in abruptly.
+    // Small padding so elements just off-screen don't pop in abruptly.
     const pad = Math.max(halfW, halfH) * 0.05;
     return {
       minX: camera.x - halfW - pad,
@@ -166,11 +243,11 @@ function niceGridSpacing(zoom: number): number {
   return nice * pow;
 }
 
-function combinedBounds(strokes: Stroke[]): BoundingBox | null {
-  if (strokes.length === 0) return null;
-  let b = strokes[0].bounds;
-  for (let i = 1; i < strokes.length; i++) {
-    const s = strokes[i].bounds;
+function combinedBoundsFromList(boundsList: BoundingBox[]): BoundingBox | null {
+  if (boundsList.length === 0) return null;
+  let b = boundsList[0];
+  for (let i = 1; i < boundsList.length; i++) {
+    const s = boundsList[i];
     b = {
       minX: Math.min(b.minX, s.minX),
       minY: Math.min(b.minY, s.minY),

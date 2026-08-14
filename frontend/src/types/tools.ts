@@ -13,6 +13,14 @@ export const DEFAULT_TOOL_SETTINGS: Record<ToolId, ToolSettings> = {
   highlighter: { color: "#ffd43b", width: 20, opacity: 0.35 },
   eraser: { color: "#ffffff", width: 20, opacity: 1 },
   hand: { color: "#1e1e1e", width: 4, opacity: 1 },
+  rectangle: { color: "#1e1e1e", width: 3, opacity: 1 },
+  circle: { color: "#1e1e1e", width: 3, opacity: 1 },
+  triangle: { color: "#1e1e1e", width: 3, opacity: 1 },
+  diamond: { color: "#1e1e1e", width: 3, opacity: 1 },
+  arrow: { color: "#1e1e1e", width: 3, opacity: 1 },
+  line: { color: "#1e1e1e", width: 3, opacity: 1 },
+  text: { color: "#1e1e1e", width: 16, opacity: 1 },
+  connector: { color: "#1e1e1e", width: 2.5, opacity: 1 },
 };
 
 export const COLOR_PRESETS = [

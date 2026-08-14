@@ -1,9 +1,13 @@
 import {
   type CanvasDocument,
+  type CanvasShape,
+  type CanvasConnector,
+  type CanvasText,
   type Stroke,
   DOCUMENT_VERSION,
 } from "../types/document";
 import { boundsOfPoints } from "../canvas/CoordinateSystem";
+import { boundsOfShape, boundsOfConnector, boundsOfText } from "../canvas/ShapeRenderer";
 
 export class DocumentParseError extends Error {
   constructor(message: string) {
@@ -61,6 +65,9 @@ export function deserializeDocument(raw: string): CanvasDocument {
 
   // Recompute bounds defensively rather than trusting cached values from disk.
   const strokes: Stroke[] = doc.strokes.map((s) => normalizeStroke(s as Stroke));
+  const shapes: CanvasShape[] = Array.isArray(doc.shapes) ? doc.shapes.map(normalizeShape) : [];
+  const connectors: CanvasConnector[] = Array.isArray(doc.connectors) ? doc.connectors.map(normalizeConnector) : [];
+  const textObjects: CanvasText[] = Array.isArray(doc.textObjects) ? doc.textObjects.map(normalizeTextObject) : [];
   const aiObjects = Array.isArray(doc.aiObjects) ? doc.aiObjects.map(normalizeAiObject) : [];
 
   return {
@@ -68,6 +75,9 @@ export function deserializeDocument(raw: string): CanvasDocument {
     canvas: { name: doc.canvas?.name ?? "Untitled" },
     camera: doc.camera,
     strokes,
+    shapes,
+    connectors,
+    textObjects,
     aiObjects,
     createdAt: doc.createdAt ?? Date.now(),
     updatedAt: doc.updatedAt ?? Date.now(),
@@ -79,6 +89,30 @@ function normalizeStroke(s: Stroke): Stroke {
     throw new DocumentParseError("This file contains an invalid stroke.");
   }
   return { ...s, bounds: boundsOfPoints(s.points) };
+}
+
+function normalizeShape(s: unknown): CanvasShape {
+  const shape = s as CanvasShape;
+  if (!shape || typeof shape.id !== "string" || typeof shape.x !== "number") {
+    throw new DocumentParseError("This file contains an invalid shape.");
+  }
+  return { ...shape, bounds: boundsOfShape(shape) };
+}
+
+function normalizeConnector(c: unknown): CanvasConnector {
+  const conn = c as CanvasConnector;
+  if (!conn || typeof conn.id !== "string") {
+    throw new DocumentParseError("This file contains an invalid connector.");
+  }
+  return { ...conn, bounds: boundsOfConnector(conn) };
+}
+
+function normalizeTextObject(t: unknown): CanvasText {
+  const text = t as CanvasText;
+  if (!text || typeof text.id !== "string" || typeof text.text !== "string") {
+    throw new DocumentParseError("This file contains an invalid text object.");
+  }
+  return { ...text, bounds: boundsOfText(text) };
 }
 
 function normalizeAiObject(o: unknown): NonNullable<CanvasDocument["aiObjects"]>[number] {

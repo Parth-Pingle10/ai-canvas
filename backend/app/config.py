@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     # --- Request behavior ----------------------------------------------------------
     ai_idle_delay_ms: int = 700
-    ai_request_timeout_ms: int = 60_000
+    ai_request_timeout_ms: int = 120_000
 
     # --- Region-of-interest defaults (mirrored on the frontend; backend only
     #     uses these for validation bounds, not for performing extraction —

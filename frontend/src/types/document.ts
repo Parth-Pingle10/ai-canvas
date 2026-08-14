@@ -7,7 +7,21 @@
  * rasterized independently (see canvas/RegionExtractor.ts).
  */
 
-export type ToolId = "select" | "pen" | "pencil" | "highlighter" | "eraser" | "hand";
+export type ToolId =
+  | "select"
+  | "pen"
+  | "pencil"
+  | "highlighter"
+  | "eraser"
+  | "hand"
+  | "rectangle"
+  | "circle"
+  | "triangle"
+  | "diamond"
+  | "arrow"
+  | "line"
+  | "text"
+  | "connector";
 
 export interface Point {
   x: number;
@@ -42,12 +56,90 @@ export interface Stroke {
   version: number;
 }
 
-/** Every object that can live on the canvas render path. AI objects
- *  (draft/confirmed) are intentionally NOT part of this union — they render
- *  through a separate DOM overlay layer, not the canvas rasterizer, so this
- *  stays exactly what it was before the AI integration. See types/ai.ts for
- *  why AI objects are a parallel structure instead of a SceneObject variant. */
-export type SceneObject = Stroke;
+export type ShapeType =
+  | "rectangle"
+  | "rounded_rectangle"
+  | "circle"
+  | "ellipse"
+  | "triangle"
+  | "diamond";
+
+export interface CanvasShape {
+  id: string;
+  type: "shape";
+  shapeType: ShapeType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  strokeColor: string;
+  fillColor?: string;
+  strokeWidth: number;
+  strokeStyle?: "solid" | "dashed";
+  opacity: number;
+  text?: string;
+  textColor?: string;
+  fontSize?: number;
+  bounds: BoundingBox;
+  status?: "confirmed" | "draft";
+  draftGroupId?: string;
+  createdAt: number;
+  version: number;
+}
+
+export type ConnectorAnchor = "top" | "bottom" | "left" | "right" | "center" | "auto";
+
+export interface CanvasConnector {
+  id: string;
+  type: "connector";
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  fromId?: string; // Connected to shape ID
+  fromAnchor?: ConnectorAnchor;
+  toId?: string; // Connected to shape ID
+  toAnchor?: ConnectorAnchor;
+  routing?: "straight" | "orthogonal";
+  strokeColor: string;
+  strokeWidth: number;
+  strokeStyle?: "solid" | "dashed";
+  opacity?: number;
+  startArrow?: boolean;
+  endArrow?: boolean;
+  label?: string;
+  labelColor?: string;
+  bounds: BoundingBox;
+  status?: "confirmed" | "draft";
+  draftGroupId?: string;
+  createdAt: number;
+  version: number;
+}
+
+export interface CanvasText {
+  id: string;
+  type: "text";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+  fontSize: number;
+  fontColor: string;
+  fontFamily?: string;
+  fontWeight?: string | number;
+  align?: "left" | "center" | "right";
+  bounds: BoundingBox;
+  status?: "confirmed" | "draft";
+  draftGroupId?: string;
+  createdAt: number;
+  version: number;
+}
+
+export type CanvasElement = Stroke | CanvasShape | CanvasConnector | CanvasText;
+
+export type SceneObject = CanvasElement;
 
 export interface Camera {
   x: number;
@@ -64,7 +156,10 @@ export interface CanvasDocument {
   };
   camera: Camera;
   strokes: Stroke[];
-  /** AI-generated objects (draft + confirmed). Optional for backward
+  shapes?: CanvasShape[];
+  connectors?: CanvasConnector[];
+  textObjects?: CanvasText[];
+  /** AI-generated card objects (draft + confirmed). Optional for backward
    *  compatibility with documents saved before the AI integration existed —
    *  always defaulted to [] on load, never assumed present. */
   aiObjects?: import("./ai").AiObject[];
@@ -79,6 +174,10 @@ export function createEmptyDocument(name = "Untitled"): CanvasDocument {
     canvas: { name },
     camera: { x: 0, y: 0, zoom: 1 },
     strokes: [],
+    shapes: [],
+    connectors: [],
+    textObjects: [],
+    aiObjects: [],
     createdAt: now,
     updatedAt: now,
   };

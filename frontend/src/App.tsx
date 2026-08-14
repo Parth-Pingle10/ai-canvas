@@ -38,6 +38,9 @@ export default function App() {
   }, [theme]);
 
   const strokes = useCanvasStore((s) => s.strokes);
+  const shapes = useCanvasStore((s) => s.shapes);
+  const connectors = useCanvasStore((s) => s.connectors);
+  const textObjects = useCanvasStore((s) => s.textObjects);
   const camera = useCanvasStore((s) => s.camera);
   const canvasName = useCanvasStore((s) => s.canvasName);
   const loadDocument = useCanvasStore((s) => s.loadDocument);
@@ -111,7 +114,7 @@ export default function App() {
 
   const handleExport = useCallback(async () => {
     try {
-      const blob = await exportCanvasToPng(strokes);
+      const blob = await exportCanvasToPng(strokes, {}, shapes, connectors, textObjects);
       downloadBlob(blob, `${(canvasName || "canvas").replace(/[^a-z0-9-_]+/gi, "_")}.png`);
     } catch (err) {
       if (err instanceof EmptyCanvasExportError) {
@@ -120,15 +123,15 @@ export default function App() {
         pushNotice("export-failed", messageFor(err, "PNG export failed — please try again."));
       }
     }
-  }, [strokes, canvasName, pushNotice]);
+  }, [strokes, shapes, connectors, textObjects, canvasName, pushNotice]);
 
   const handleClear = useCallback(() => {
-    if (strokes.length === 0) return;
+    if (strokes.length === 0 && shapes.length === 0 && connectors.length === 0 && textObjects.length === 0) return;
     const confirmed = window.confirm("Clear the whole canvas? This can still be undone.");
     if (confirmed) {
       clearCanvas();
     }
-  }, [strokes.length, clearCanvas]);
+  }, [strokes.length, shapes.length, connectors.length, textObjects.length, clearCanvas]);
 
   // Dev-only helper for performance testing: run `__seedStrokes(5000)` in the
   // browser console to generate a stress-test document without drawing by hand.

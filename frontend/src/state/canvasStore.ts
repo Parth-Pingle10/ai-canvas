@@ -1,5 +1,13 @@
 import { create } from "zustand";
-import type { Camera, CanvasDocument, Stroke, ToolId } from "../types/document";
+import type {
+  Camera,
+  CanvasConnector,
+  CanvasDocument,
+  CanvasShape,
+  CanvasText,
+  Stroke,
+  ToolId,
+} from "../types/document";
 import { createEmptyDocument } from "../types/document";
 import type { AiObject, PendingAiRequest, WorldRect } from "../types/ai";
 import { DEFAULT_TOOL_SETTINGS, type ToolSettings } from "../types/tools";
@@ -7,13 +15,11 @@ import { createDefaultCamera } from "../canvas/Camera";
 
 const MAX_HISTORY = 100;
 
-/** A history snapshot captures both structured layers of the document —
- * ink strokes and AI objects — so accepting/discarding a draft is undoable
- * in exactly the same way drawing a stroke is (see canvasStore's history
- * docs in docs/CANVAS_ARCHITECTURE.md §4, extended for AI objects in
- * docs/AI_INTEGRATION.md). */
 interface HistorySnapshot {
   strokes: Stroke[];
+  shapes: CanvasShape[];
+  connectors: CanvasConnector[];
+  textObjects: CanvasText[];
   aiObjects: AiObject[];
 }
 
@@ -38,6 +44,9 @@ export interface AppNotice {
 interface CanvasState {
   canvasName: string;
   strokes: Stroke[];
+  shapes: CanvasShape[];
+  connectors: CanvasConnector[];
+  textObjects: CanvasText[];
   camera: Camera;
   tool: ToolId;
   toolSettings: Record<ToolId, ToolSettings>;
@@ -46,15 +55,9 @@ interface CanvasState {
   notices: AppNotice[];
 
   // AI objects (draft + confirmed) and in-flight request placeholders.
-  // Pending requests are deliberately NOT part of undo history — they're
-  // ephemeral UI state, not document content.
   aiObjects: AiObject[];
   pendingRequests: PendingAiRequest[];
 
-  /** Reported by CanvasView's ResizeObserver — used by the AI trigger's
-   *  viewport-fallback ROI strategy, which needs to know the visible
-   *  world-space area without CanvasView and the trigger hook coupling
-   *  directly to each other. */
   viewportSize: { width: number; height: number };
   setViewportSize: (size: { width: number; height: number }) => void;
 
@@ -69,13 +72,37 @@ interface CanvasState {
   setSelection: (ids: string[]) => void;
   clearSelection: () => void;
 
-  // Document mutation (all undoable, structured)
+  // Generic document commit
+  commitScene: (patch: {
+    strokes?: Stroke[];
+    shapes?: CanvasShape[];
+    connectors?: CanvasConnector[];
+    textObjects?: CanvasText[];
+    aiObjects?: AiObject[];
+  }) => void;
+
+  // Stroke mutation
   commitStrokes: (next: Stroke[]) => void;
   addStroke: (stroke: Stroke) => void;
+
+  // Shape / Connector / Text mutation
+  commitShapes: (next: CanvasShape[]) => void;
+  addShape: (shape: CanvasShape) => void;
+  commitConnectors: (next: CanvasConnector[]) => void;
+  addConnector: (connector: CanvasConnector) => void;
+  commitTextObjects: (next: CanvasText[]) => void;
+  addTextObject: (textObj: CanvasText) => void;
+
+  // AI Diagram Draft Actions
+  addDiagramDraft: (shapes: CanvasShape[], connectors: CanvasConnector[]) => void;
+  acceptDraftGroup: (draftGroupId: string) => void;
+  discardDraftGroup: (draftGroupId: string) => void;
+
+  // Common Selection / Canvas Actions
   deleteSelection: () => void;
   clearCanvas: () => void;
 
-  // AI object mutation (all undoable, structured — see commitAiObjects)
+  // AI Card object mutation
   commitAiObjects: (next: AiObject[]) => void;
   addDraft: (draft: AiObject) => void;
   acceptDraft: (id: string) => void;
@@ -84,7 +111,7 @@ interface CanvasState {
   moveAiObject: (id: string, bounds: WorldRect) => void;
   resizeAiObject: (id: string, bounds: WorldRect) => void;
 
-  // Pending AI requests (not undoable — ephemeral loading state)
+  // Pending AI requests
   addPendingRequest: (req: PendingAiRequest) => void;
   removePendingRequest: (id: string) => void;
   cancelPendingRequest: (id: string) => void;
@@ -110,6 +137,9 @@ let noticeCounter = 0;
 export const useCanvasStore = create<CanvasState>((set, get) => ({
   canvasName: "Untitled",
   strokes: [],
+  shapes: [],
+  connectors: [],
+  textObjects: [],
   camera: createDefaultCamera(),
   tool: "pen",
   toolSettings: structuredCloneSettings(),
@@ -136,46 +166,110 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   setSelection: (ids) => set({ selectedIds: ids }),
   clearSelection: () => set({ selectedIds: [] }),
 
-  commitStrokes: (next) =>
+  commitScene: (patch) =>
     set((state) => {
-      const past = [...state.history.past, { strokes: state.strokes, aiObjects: state.aiObjects }].slice(
-        -MAX_HISTORY
-      );
+      const past = [
+        ...state.history.past,
+        {
+          strokes: state.strokes,
+          shapes: state.shapes,
+          connectors: state.connectors,
+          textObjects: state.textObjects,
+          aiObjects: state.aiObjects,
+        },
+      ].slice(-MAX_HISTORY);
+
       return {
-        strokes: next,
+        strokes: patch.strokes ?? state.strokes,
+        shapes: patch.shapes ?? state.shapes,
+        connectors: patch.connectors ?? state.connectors,
+        textObjects: patch.textObjects ?? state.textObjects,
+        aiObjects: patch.aiObjects ?? state.aiObjects,
         history: { past, future: [] },
       };
     }),
+
+  commitStrokes: (next) => get().commitScene({ strokes: next }),
 
   addStroke: (stroke) => {
     const { strokes, commitStrokes } = get();
     commitStrokes([...strokes, stroke]);
   },
 
+  commitShapes: (next) => get().commitScene({ shapes: next }),
+
+  addShape: (shape) => {
+    const { shapes, commitShapes } = get();
+    commitShapes([...shapes, shape]);
+  },
+
+  commitConnectors: (next) => get().commitScene({ connectors: next }),
+
+  addConnector: (connector) => {
+    const { connectors, commitConnectors } = get();
+    commitConnectors([...connectors, connector]);
+  },
+
+  commitTextObjects: (next) => get().commitScene({ textObjects: next }),
+
+  addTextObject: (textObj) => {
+    const { textObjects, commitTextObjects } = get();
+    commitTextObjects([...textObjects, textObj]);
+  },
+
+  addDiagramDraft: (newShapes, newConnectors) => {
+    const { shapes, connectors, commitScene } = get();
+    commitScene({
+      shapes: [...shapes, ...newShapes],
+      connectors: [...connectors, ...newConnectors],
+    });
+  },
+
+  acceptDraftGroup: (draftGroupId) => {
+    const { shapes, connectors, commitScene } = get();
+    const nextShapes = shapes.map((s) =>
+      s.draftGroupId === draftGroupId ? { ...s, status: "confirmed" as const, version: s.version + 1 } : s
+    );
+    const nextConnectors = connectors.map((c) =>
+      c.draftGroupId === draftGroupId ? { ...c, status: "confirmed" as const, version: c.version + 1 } : c
+    );
+    commitScene({ shapes: nextShapes, connectors: nextConnectors });
+  },
+
+  discardDraftGroup: (draftGroupId) => {
+    const { shapes, connectors, commitScene } = get();
+    commitScene({
+      shapes: shapes.filter((s) => s.draftGroupId !== draftGroupId),
+      connectors: connectors.filter((c) => c.draftGroupId !== draftGroupId),
+    });
+  },
+
   deleteSelection: () => {
-    const { strokes, selectedIds, commitStrokes } = get();
+    const { strokes, shapes, connectors, textObjects, selectedIds, commitScene } = get();
     if (selectedIds.length === 0) return;
     const idSet = new Set(selectedIds);
-    commitStrokes(strokes.filter((s) => !idSet.has(s.id)));
+
+    commitScene({
+      strokes: strokes.filter((s) => !idSet.has(s.id)),
+      shapes: shapes.filter((s) => !idSet.has(s.id)),
+      connectors: connectors.filter((c) => !idSet.has(c.id)),
+      textObjects: textObjects.filter((t) => !idSet.has(t.id)),
+    });
     set({ selectedIds: [] });
   },
 
   clearCanvas: () => {
-    const { commitStrokes } = get();
-    commitStrokes([]);
+    const { commitScene } = get();
+    commitScene({
+      strokes: [],
+      shapes: [],
+      connectors: [],
+      textObjects: [],
+    });
     set({ selectedIds: [] });
   },
 
-  commitAiObjects: (next) =>
-    set((state) => {
-      const past = [...state.history.past, { strokes: state.strokes, aiObjects: state.aiObjects }].slice(
-        -MAX_HISTORY
-      );
-      return {
-        aiObjects: next,
-        history: { past, future: [] },
-      };
-    }),
+  commitAiObjects: (next) => get().commitScene({ aiObjects: next }),
 
   addDraft: (draft) => {
     const { aiObjects, commitAiObjects } = get();
@@ -237,10 +331,22 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const previous = past[past.length - 1];
       return {
         strokes: previous.strokes,
-        aiObjects: previous.aiObjects,
+        shapes: previous.shapes ?? [],
+        connectors: previous.connectors ?? [],
+        textObjects: previous.textObjects ?? [],
+        aiObjects: previous.aiObjects ?? [],
         history: {
           past: past.slice(0, -1),
-          future: [{ strokes: state.strokes, aiObjects: state.aiObjects }, ...future].slice(0, MAX_HISTORY),
+          future: [
+            {
+              strokes: state.strokes,
+              shapes: state.shapes,
+              connectors: state.connectors,
+              textObjects: state.textObjects,
+              aiObjects: state.aiObjects,
+            },
+            ...future,
+          ].slice(0, MAX_HISTORY),
         },
         selectedIds: [],
       };
@@ -253,9 +359,21 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const next = future[0];
       return {
         strokes: next.strokes,
-        aiObjects: next.aiObjects,
+        shapes: next.shapes ?? [],
+        connectors: next.connectors ?? [],
+        textObjects: next.textObjects ?? [],
+        aiObjects: next.aiObjects ?? [],
         history: {
-          past: [...past, { strokes: state.strokes, aiObjects: state.aiObjects }].slice(-MAX_HISTORY),
+          past: [
+            ...past,
+            {
+              strokes: state.strokes,
+              shapes: state.shapes,
+              connectors: state.connectors,
+              textObjects: state.textObjects,
+              aiObjects: state.aiObjects,
+            },
+          ].slice(-MAX_HISTORY),
           future: future.slice(1),
         },
         selectedIds: [],
@@ -268,7 +386,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   loadDocument: (doc) =>
     set({
       canvasName: doc.canvas.name,
-      strokes: doc.strokes,
+      strokes: doc.strokes ?? [],
+      shapes: doc.shapes ?? [],
+      connectors: doc.connectors ?? [],
+      textObjects: doc.textObjects ?? [],
       camera: doc.camera,
       aiObjects: doc.aiObjects ?? [],
       selectedIds: [],
@@ -283,6 +404,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       canvas: { name: state.canvasName },
       camera: state.camera,
       strokes: state.strokes,
+      shapes: state.shapes,
+      connectors: state.connectors,
+      textObjects: state.textObjects,
       aiObjects: state.aiObjects,
       createdAt: now,
       updatedAt: now,
