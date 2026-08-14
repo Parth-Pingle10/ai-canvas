@@ -9,35 +9,18 @@ not at a first-time reader. All bare paths below (e.g. `src/types/document.ts`) 
 ## 1. Why a structured scene, not a bitmap
 
 The single most important constraint in the brief: **the canvas must not be one giant bitmap.**
-Every mark is a `Stroke` object (`src/types/document.ts`):
+The scene is represented as structured, strongly-typed native canvas objects (`src/types/document.ts`):
 
-```ts
-interface Stroke {
-  id: string;
-  points: Point[];       // world-space, with pressure/tilt/timestamp
-  color: string;
-  width: number;
-  tool: "pen" | "pencil" | "highlighter" | "eraser";
-  opacity: number;
-  bounds: BoundingBox;   // cached, recomputed whenever points change
-  createdAt: number;
-  version: number;
-}
-```
+- **`Stroke`**: Freehand drawn paths with pressure, tilt, and tool styling (pen, pencil, highlighter).
+- **`CanvasShape`**: Geometric vector primitives (`rectangle`, `rounded-rectangle`, `circle`, `diamond`, `triangle`) with stroke/fill styles, text labels, and connection ports.
+- **`CanvasConnector`**: Orthogonal or straight relational arrows dynamically bound between shape ports or arbitrary world anchor points.
+- **`CanvasText`**: Native in-canvas typed text objects with inline editing, typography, and bounding box dimensions.
 
-This is what makes the following all possible later without re-architecting anything:
+This structured representation enables:
 
-- **Region extraction** (`RegionExtractor.ts`) — query which strokes fall in a world-space
-  rectangle, then rasterize *only that rectangle* to a small PNG. A bitmap-backed canvas would
-  require either re-rendering everything into an off-screen buffer at the right resolution (slow,
-  and loses per-stroke metadata) or storing coordinates alongside pixels (fighting the format).
-- **Selection / move / resize** — a selected object is a set of stroke ids; moving it is
-  translating each stroke's `points`, not manipulating pixels.
-- **Undo/redo** — see §4.
-- **Future draft objects** — a model's response becomes a new kind of `SceneObject` (currently
-  only `Stroke` exists, but the union type is deliberately named `SceneObject` in
-  `types/document.ts` to make this obvious) without touching the renderer's culling or hit-testing
-  logic, which both operate on `bounds`.
+- **Full-Scene Region Extraction** (`RegionExtractor.ts`) — queries intersecting strokes, shapes, connectors, and text within world-space bounds and rasterizes them cleanly.
+- **Direct Selection, Drag, and 8-Handle Resize** — object manipulation updates vector coordinates without pixel degradation.
+- **Unified Undo/Redo** — single snapshot history stack covering all visual elements.
 
 ## 2. Coordinate system
 

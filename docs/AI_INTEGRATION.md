@@ -1,189 +1,92 @@
 # AI Integration Architecture
 
-This document covers the pipeline added on top of the canvas foundation described in
-[`CANVAS_ARCHITECTURE.md`](CANVAS_ARCHITECTURE.md): idle detection → region-of-interest → local
-multimodal model → structured draft → canvas object. It assumes familiarity with that document,
-especially the stroke data model (§1) and undo architecture (§4), both of which this integration
-extends rather than replaces.
+This document details the multimodal AI pipeline built on top of the structured canvas foundation: Region-of-Interest (ROI) extraction → Gemini Primary / Ollama Fallback routing → Schema normalization → Topological diagram engine → Native canvas drafts.
 
-## 1. Why AI objects are a DOM overlay, not canvas-rasterized
+---
 
-The single biggest design decision in this integration: **AI draft/confirmed objects are rendered
-as absolutely-positioned DOM elements, not drawn into the `<canvas>` bitmap.**
+## 1. Hybrid Provider Architecture (Gemini Primary + Ollama Fallback)
 
-`types/ai.ts`'s `AiObject` is deliberately **not** added to the `SceneObject` union
-(`types/document.ts`) that the canvas rasterizer understands. Instead, `components/AiLayer/AiObjectLayer.tsx`
-renders one absolutely-positioned `<div>` per AI object, transformed with the same
-world→screen camera math (`worldToScreen`) that the canvas renderer uses, so the cards pan and
-zoom in perfect lockstep with the ink underneath them without being canvas pixels themselves.
+The AI backend implements a robust, fault-tolerant provider abstraction (`backend/app/ai/`):
 
-This tradeoff was chosen deliberately:
-
-- **Markdown/LaTeX rendering** (`ai/renderContent.ts`, using `marked` + KaTeX) produces real HTML —
-  trying to rasterize rich text with proper line-wrapping, tables, and math typesetting directly
-  into a `<canvas>` context would mean either hand-rolling a text layout engine or rendering HTML
-  to an image first (expensive, blurry at high zoom, not selectable).
-- **Interactive elements** (Accept/Discard buttons, a draggable header, a resize handle) are just
-  ordinary DOM event handlers this way, not custom canvas hit-testing.
-- **Text selection** for copying a solved equation or explanation out of a draft card comes for
-  free.
-
-The cost of this choice: AI objects don't participate in the canvas's viewport-culling or
-stroke-based hit-testing (`utils/geometry.ts`), and they aren't included in PNG export
-(`utils/exportPng.ts` only ever drew `Stroke[]`, and that hasn't changed — exporting AI cards as
-part of the flattened PNG is a reasonable next step, deliberately not built now to keep this
-integration's diff to the existing export path at zero). At the object counts this assignment
-targets (a handful of draft/confirmed cards, not thousands), an unculled DOM overlay is not a
-performance concern — the concern would resurface if a canvas ever accumulated hundreds of
-AI objects, at which point the overlay would want the same viewport-culling treatment the strokes
-already get.
-
-## 2. Data model
-
-```ts
-interface AiObject {
-  id: string;
-  kind: "ai-object";
-  status: "draft" | "confirmed";
-  contentType: "markdown" | "latex";
-  title: string;
-  content: string;
-  confidence: number;
-  bounds: WorldRect;        // world-space x/y/width/height — movable, resizable
-  sourceBounds: BoundingBox; // the ROI that produced this object
-  requestId: string;
-  createdAt: number;
-  version: number;
-}
+```mermaid
+graph TD
+    Trigger["Ctrl + Enter Trigger"] --> Request["FastAPI Backend (/api/analyze)"]
+    Request --> Gemini{"Gemini 3.6 Flash (Primary)"}
+    
+    Gemini -- "200 OK" --> Normalized["Normalized JSON Schema"]
+    Gemini -- "429 / Network Failure / Timeout" --> Fallback{"Ollama qwen3-vl:4b (Fallback)"}
+    
+    Fallback -- "200 OK" --> Normalized
+    Fallback -- "Failure" --> Error["Structured API Error"]
+    
+    Normalized --> Parser["Validation & Schema Normalization"]
+    Parser --> Canvas["Native Vector Objects & Draft Layer"]
 ```
 
-`CanvasDocument.aiObjects` (optional, defaults to `[]`) persists both draft and confirmed objects
-in save/load — see `utils/persistence.ts`'s `normalizeAiObject`, which validates the minimal shape
-of a loaded AI object defensively, the same way `normalizeStroke` already did for strokes. A
-document saved before this integration existed loads fine; the field is simply absent and
-defaulted.
+### Routing Strategy
+- **Google Gemini (`gemini-3.6-flash`)**: Primary cloud runtime offering fast multimodal latency (~900ms $p_{50}$), rich reasoning, and strict structured JSON generation. Configured with deterministic sampling (`temperature=0.1`, `top_p=0.9`) and `automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)`.
+- **Local Ollama (`qwen3-vl:4b`)**: Offline fallback activated automatically if Gemini quota is exhausted (HTTP 429), the API key is unconfigured, or cloud network errors occur. Ollama is **never** called in parallel or redundantly after a successful Gemini response.
 
-## 3. Undo history: unified, not parallel
+---
 
-`state/canvasStore.ts`'s history stack was extended from snapshotting `Stroke[]` to snapshotting
-`{ strokes: Stroke[]; aiObjects: AiObject[] }` — **one history, not two independent ones.**
-`commitStrokes()` and the new `commitAiObjects()` both push the *same* kind of snapshot (capturing
-both fields, changing only the one being mutated), so `undo()`/`redo()` restore both fields
-together. This is what makes "accepting a draft must be undoable" (per the assignment) fall out
-for free: `acceptDraft()` calls `commitAiObjects()` exactly like `addStroke()` calls
-`commitStrokes()`, and both live on the same `past`/`future` stacks.
+## 2. Deterministic AI Trigger Model (`Ctrl + Enter`)
 
-Pending in-flight requests (`pendingRequests` — the "Analyzing..." placeholders) are explicitly
-**not** part of this history. They're ephemeral network/UI state, not document content; undoing
-past a pending request wouldn't mean anything coherent (there's no prior "version" of an in-flight
-network call to restore).
+AI analysis is strictly controlled by explicit user intent:
 
-## 4. Idle detection and manual trigger
+- **Hotkey Trigger**: `Ctrl + Enter` (or `Cmd + Enter`).
+- **Rationale**: Multimodal vision requests are computationally and financially significant. Automatic idle-pause timers created unwanted interruptions, duplicate token costs during drawing pauses, and ungrounded hallucinations on incomplete sketches.
+- **Empty Canvas Guard**: Pressing `Ctrl + Enter` with no meaningful canvas content displays `"Add something to the canvas before analyzing."` without sending empty payloads.
+- **Synchronous Context Commit**: If the user is typing in the in-canvas Text tool, pressing `Ctrl + Enter` synchronously flushes the live textarea value into `useCanvasStore.textObjects` and passes the latest text directly to the analysis pipeline in the same tick.
 
-`ai/useAiTrigger.ts` is mounted once near the top of the component tree (`App.tsx`), not inside
-`CanvasView`, since it only needs store access — it has no direct involvement with pointer events
-or rendering.
+---
 
-```
-strokes array changes (any commit)
-        v
-diff old vs new by (id, version) -> accumulate touched ids into a "dirty" set
-        v
-reset a 700ms timer (VITE_AI_IDLE_DELAY_MS)
-        v
-timer fires with no further stroke changes -> dispatch("idle_pause")
-```
+## 3. Full-Scene ROI & Context Extraction
 
-Ctrl+Enter calls `triggerManualAnalysis()` -> `dispatch("manual")` directly, bypassing the idle
-wait (but not the region-computation or cancellation logic below — a manual trigger still
-supersedes an in-flight automatic one, and vice versa).
+`RegionExtractor.ts` computes the optimal visual and semantic region without rasterizing massive blank canvas areas:
 
-**Dirty-stroke tracking** diffs the `strokes` array by comparing `(id, version)` pairs between the
-previous and current array on every store change — cheap (one pass, one Map) and correct because
-strokes are never mutated in place (every edit produces a new stroke object with a bumped
-`version`, per `CANVAS_ARCHITECTURE.md` §4). The dirty set accumulates across multiple quick edits
-and is only cleared once it's actually used as the basis for a dispatched request — not on every
-timer reset — so a request that gets deduped away doesn't lose track of what changed.
+1. **Context Hierarchy**:
+   - `Selection`: If the user has selected objects, the bounding box of the selection defines the ROI.
+   - `Recent Edits`: If unselected, dirty strokes, recent text, and shapes define the ROI.
+   - `Viewport World Bounds`: Fallback to current camera framing.
+2. **Multi-Layer Offscreen Rasterization**:
+   - Renders vector shapes, connectors, strokes, and typed text to an offscreen HTML5 canvas buffer at `1024px` resolution with `48px` padding.
+   - Forwards structured `canvasTexts` as pure JSON strings alongside the visual bitmap, providing the model with grounded typed text and visual spatial layout simultaneously.
 
-## 5. Region-of-interest strategy
+---
 
-Implemented as a pure function, `canvas/RegionExtractor.ts`'s `computeRoi()`, independent of
-timers/network/React so it's directly unit-testable (`src/__tests__/roiCalculation.test.ts`):
+## 4. Output Types & Topological Graph Engine
 
-```
-1. recent-strokes  - bounding box of strokes in the "dirty" set (see §4)
-2. selection       - if nothing recently changed, use the current stroke selection
-3. viewport        - fallback: whatever's currently visible on screen
-```
+The AI pipeline produces three distinct output categories:
 
-Tried in that order, first non-empty match wins. This mirrors the assignment's specified strategy
-exactly. `computeRoi()` takes the viewport's world-space bounds via `viewportWorldBounds()`
-(`canvas/CoordinateSystem.ts`) — the same helper `CanvasRenderer`'s culling logic could use,
-avoiding a second implementation of "what's currently visible" math.
+### A. Mathematical Derivations & Explanations (`contentType: "latex"`)
+- Formatted step-by-step mathematical solutions rendered on the canvas via KaTeX.
 
-**Experimenting with this strategy** later just means editing `computeRoi()` — it has no
-dependency on the trigger hook, the API client, or the store beyond the plain data it's handed as
-arguments.
+### B. Contextual Q&A & Notes (`contentType: "markdown"`)
+- Structured Markdown cards sanitized with DOMPurify and rendered with Marked.
 
-## 6. Request de-duplication
+### C. Native Vector Shapes & Multi-Node Diagrams (`contentType: "diagram" | "shape"`)
+- **Node-and-Edge Synthesis**: Multimodal AI emits semantic graph definitions with node labels, shape types (rectangle, rounded-rectangle, circle, diamond, triangle), and directed edge relationships.
+- **Topological Layout Engine (`LayoutEngine.ts`)**: Automatically computes collision-free bounding boxes, topological tiers, and orthogonal connector routes.
+- **Native Canvas Integration**: Generated objects are native vector shapes (`CanvasShape`) and connectors (`CanvasConnector`), not static PNG images.
 
-`canvas/RegionExtractor.ts`'s `roiSignature(roi, strokes)` produces a deterministic string from the
-ROI's source and its member strokes' `(id, version)` pairs (sorted, so ordering doesn't matter).
-Before dispatching an **idle-triggered** request, `useAiTrigger` compares the new signature against
-the last-dispatched one; an identical signature means nothing meaningful changed since the last
-request, and the dispatch is skipped silently. A **manual** trigger (explicit user intent) always
-goes through regardless of signature — deduping an explicit "analyze this now" click would be
-surprising, not helpful.
+---
 
-## 7. Rasterization and transport
+## 5. Draft Lifecycle & Atomic Source Replacement
 
-`RegionExtractor.extractRegion()` was extended with a `format` option (`"webp" | "png"`,
-default controlled by `VITE_AI_ROI_FORMAT`) and now returns `mimeType` alongside the blob. WebP is
-the default for AI requests specifically because the assignment measures image size against
-latency/cost — a smaller payload at comparable visual quality directly improves the numbers being
-instrumented. The blob is converted to a raw base64 string (`useAiTrigger`'s `blobToBase64`,
-stripping the `data:...;base64,` prefix) before being sent as JSON, matching the backend's
-`AnalyzeRequest.image` field.
+Every AI output enters a structured lifecycle:
 
-## 8. Cancellation and supersession
+1. **Draft State**: Rendered with glowing dashed borders and a floating action bar (**Accept** / **Discard**).
+2. **Accept Action**:
+   - For Cleaned Shapes and Flowcharts: Confirms the clean vector objects and atomically removes the original rough hand-drawn source strokes.
+   - Undoing (`Ctrl + Z`) the acceptance restores the original rough strokes and reverts the draft.
+3. **Discard Action**:
+   - Removes the AI draft objects while preserving the original user strokes intact.
 
-Each dispatched request gets its own `AbortController`, tracked in `useAiTrigger`'s `inFlightRef`.
+---
 
-- **A new dispatch supersedes an old one:** before starting, `dispatch()` aborts any existing
-  `inFlightRef` controller, removes its pending placeholder, and reports its outcome as
-  `"superseded"` to the backend (`POST /api/metrics/outcome`) — the backend's trace already has a
-  `"pending"` line for that request from when `/api/analyze` first returned (or the request may
-  still be in flight, in which case the abort prevents the response from ever being used — see the
-  `inFlightRef.current?.requestId !== requestId` check right after `await analyzeRegion(...)`,
-  which guards against a slow superseded response landing after a newer one already resolved).
-- **Explicit user cancellation** (the "Cancel" button on a pending placeholder card) calls the
-  store's `cancelPendingRequest(id)`, which aborts that request's controller directly; the UI layer
-  reports the outcome as `"cancelled"`.
-- Both cases raise a `DOMException` named `AbortError` from `fetch`; `apiClient.ts`'s
-  `analyzeRegion()` re-throws it as-is (not wrapped in `AnalyzeApiError`) specifically so
-  `useAiTrigger`'s catch block can distinguish "this was intentionally aborted, say nothing" from
-  "this genuinely failed, show a notice."
+## 6. Adaptive Auto-Focus & Auto-Zoom
 
-## 9. Draft placement
-
-On a successful response, the draft card is placed at `anchorBounds` — computed once, at dispatch
-time, as a fixed offset to the right of the ROI (`roi.bounds.maxX + 40` world units) — not
-recomputed after the response arrives, so the card's position is stable and predictable regardless
-of how long the request took. The user can drag it anywhere afterward (`AiObjectLayer`'s header
-drag handler, committing via `moveAiObject` on pointer-up) or resize it (the corner handle,
-committing via `resizeAiObject`), both going through the same undoable `commitAiObjects` path as
-everything else in §3.
-
-## 10. What's next (deliberately not built)
-
-- **PNG export doesn't include AI objects.** `utils/exportPng.ts` still only rasterizes
-  `Stroke[]`. Extending it to also draw AI cards (as HTML-to-canvas, or a simplified text
-  rendering) is a natural follow-up once the DOM-overlay approach in §1 is validated against real
-  usage.
-- **No spatial culling for AI objects.** Fine at the object counts this assignment targets; see §1.
-- **No connecting line between a draft and its source ROI.** `sourceBounds` is already stored on
-  every `AiObject` specifically so this is a small addition later (draw a line/arrow in the
-  `AiObjectLayer` overlay) rather than a data-model change.
-- **Streaming responses.** See `docs/METRICS.md` for why `ttft`/`t_stream` are currently
-  approximated rather than truly measured, and what switching to Ollama's streaming API would
-  involve on both ends.
+Upon generation, `Camera.ts::calculateFocusCamera()`:
+- Calculates the unified composite bounding box across all generated result objects.
+- Adds adaptive viewport padding (`paddingFraction = 0.18`).
+- Computes `fitZoom = clamp(Math.min(availW / contentW, availH / contentH), 0.6, 1.2)` and smoothly centers the result within the viewport.

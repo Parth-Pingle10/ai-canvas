@@ -1,130 +1,184 @@
-# AI Canvas
+# Project SLATE — AI Canvas
 
-An infinite, structured-document whiteboard: draw, write, erase, select, move, resize,
-undo/redo, pan, zoom, save/load, export to PNG -- plus an AI loop where pausing while you draw
-sends the region you're working on to a local multimodal model (via [Ollama](https://ollama.com))
-and gets back a draft object placed directly on the canvas, which you can accept or discard.
+An AI-native infinite whiteboard combining low-latency visual sketching with deep multimodal understanding and structured generative canvas transformations.
 
-This is a two-part project:
+The application allows users to draw, type, create native shapes and connectors, solve handwritten mathematics, clean up rough sketches into vector primitives, and dynamically generate complex structured diagrams (flowcharts, architecture graphs, state machines) directly on the whiteboard canvas.
 
 ```text
-frontend/   React + TypeScript canvas app (Vite)
-backend/    FastAPI service: region -> Ollama -> structured draft
-docs/       Architecture docs for both halves
+ai-canvas/
+├── frontend/     React + TypeScript + Vite interactive infinite canvas
+├── backend/      FastAPI service: ROI extraction → Gemini Primary / Ollama Fallback → Normalized AI Draft
+├── benchmarks/   Benchmark canvas documents for evaluation
+├── traces/       JSONL telemetry and trace logs (≥50 real records)
+├── docs/         In-depth technical architecture and metrics documentation
+└── scripts/      Benchmark creation and automated evaluation harness
 ```
 
-For the full technical writeup, see:
-- [`docs/CANVAS_ARCHITECTURE.md`](docs/CANVAS_ARCHITECTURE.md) -- coordinate system, rendering,
-  undo, region extraction (the canvas foundation, unchanged by the AI integration)
-- [`docs/AI_INTEGRATION.md`](docs/AI_INTEGRATION.md) -- idle detection, ROI strategy, draft
-  objects, cancellation (what this pass added)
-- [`docs/METRICS.md`](docs/METRICS.md) -- exactly what's measured, estimated, or not yet
-  measurable, and why
+---
 
-## Quick start
+## Key Features
 
-You need three things running: Ollama, the backend, and the frontend.
+### 1. High-Performance Infinite Canvas Core
+- **Sparse Multi-Layer Scene**: Smooth 60fps rendering of hand-drawn strokes (pen, pencil, highlighter with pressure/tilt), vector shapes (rectangles, rounded rectangles, circles, diamonds, triangles), orthogonal & straight connectors with arrowheads, and inline text objects.
+- **Direct In-Canvas Text Tool**: Click-to-place caret autofocus at exact world coordinates, live typing synchronization, dynamic auto-growing sizing, and seamless click-to-edit for existing text objects.
+- **Manipulation & Geometry**: Marquee and click selection, multi-object drag, 8-handle uniform & directional resizing, stroke & object eraser, and unified undo/redo history covering both user edits and AI draft lifecycle actions.
+- **Infinite Navigation**: Sub-pixel pan (middle-mouse / space-drag), cursor-anchored zoom (0.1x to 5.0x), and spatial culling tested up to 5,000+ objects.
+- **Persistence & Export**: Schema-validated JSON document save/load with auto-save in `localStorage`, and content-bounded high-resolution PNG export.
+
+### 2. Multimodal AI Pipeline
+- **Hybrid Provider Architecture**:
+  - **PRIMARY Provider**: Google Gemini (`gemini-3.6-flash`) for rapid, high-accuracy multimodal vision and structured JSON synthesis.
+  - **FALLBACK Provider**: Local Ollama (`qwen3-vl:4b`) with automatic failover if cloud network or quota errors occur.
+- **Explicit `Ctrl + Enter` Deterministic Trigger**:
+  - AI analysis runs strictly when the user explicitly triggers it via `Ctrl + Enter` (or `Cmd + Enter`).
+  - Completely eliminates unwanted background idle generation, accidental token consumption, and distraction while actively drawing or typing.
+- **Full-Scene ROI Extraction**:
+  - Automatically identifies active user context: selection → recent edits (strokes, text, shapes) → viewport world bounds.
+  - Renders relevant strokes, native shapes, and typed text to an offscreen buffer while forwarding structured canvas text directly to the model.
+- **Dynamic Content & Structured Vector Generation**:
+  - **Math Equations**: Formulates step-by-step mathematical derivations formatted in LaTeX via KaTeX.
+  - **Factual & Contextual Inquiries**: Generates clean, concise Markdown note cards.
+  - **Shape Cleanup**: Detects rough hand-drawn shapes and generates clean native vector replacements.
+  - **Complex Diagrams & Workflows**: Generates multi-node topological diagrams (flowcharts, pipelines, state machines) routed with native connectors and layout constraints.
+- **Native Draft Lifecycle**:
+  - AI outputs appear as movable, editable draft objects on the canvas with an intuitive **Accept / Discard** action bar.
+  - **Source Replacement**: Accepting a cleaned shape or diagram atomically confirms the AI vector objects and removes the rough source drawing in one undoable step.
+- **Adaptive Auto-Focus & Auto-Zoom**:
+  - Calculates the exact composite bounding box across all generated result objects.
+  - Smoothly centers and zooms the camera with responsive padding (`paddingFraction = 0.18`) so the complete output fits within the viewport.
+- **Comprehensive Instrumentation**:
+  - Granular segment-level latency timing (`t_capture`, `t_dispatch`, `ttfb`, `ttft`, `t_stream`, `e2e`).
+  - Token and rate-table cost accounting logged to durable JSONL traces (`traces/traces.jsonl`).
+  - Live session KPI calculation: Cost Per Accepted Draft (**CPAD**), Draft Acceptance Rate (**DAR**), Wasted Token Ratio (**WTR**), and Benchmark Coverage (**BC**).
+
+---
+
+## Architecture Overview
+
+```mermaid
+graph TD
+    User["User Canvas Interaction"] --> Canvas["Canvas State (Strokes, Shapes, Connectors, Text)"]
+    Canvas --> Hotkey["Explicit Trigger (Ctrl + Enter)"]
+    Hotkey --> ROI["ROI & Context Extractor (Image + Structured Text)"]
+    ROI --> Client["Centralized API Client"]
+    Client --> Backend["FastAPI Backend (/api/analyze)"]
+    
+    Backend --> Gemini{"Gemini Primary"}
+    Gemini -- "Success" --> Parser["Response Parser & Schema Normalization"]
+    Gemini -- "Failure / 429 / Timeout" --> Ollama["Ollama Fallback (qwen3-vl:4b)"]
+    Ollama --> Parser
+    
+    Parser --> Validator["Semantic & Geometry Validator"]
+    Validator --> Layout["Topological Graph & Shape Engine"]
+    Layout --> Draft["Native Canvas Draft (Shapes, Connectors, Cards)"]
+    Draft --> Camera["Adaptive Auto-Focus & Auto-Zoom"]
+    Draft --> UserChoice{"User Decision"}
+    
+    UserChoice -- "Accept" --> Confirmed["Confirmed Canvas Objects (Rough Source Removed)"]
+    UserChoice -- "Discard" --> Discarded["Draft Removed (Source Preserved)"]
+    
+    Confirmed --> Metrics["Trace Logging & KPI Accounting"]
+    Discarded --> Metrics
+```
+
+---
+
+## Quick Start
+
+### Prerequisites
+- **Node.js**: v18+ (tested on v20+)
+- **Python**: 3.10+ (tested on Python 3.13)
+- **Google Gemini API Key** (optional, recommended for primary provider)
+- **Ollama** (optional, for local fallback): [ollama.com](https://ollama.com) with `qwen3-vl:4b`
+
+### 1. Backend Setup
 
 ```bash
-# 1. Ollama (separate install: https://ollama.com)
-ollama pull qwen3-vl:8b        # or qwen3-vl:4b on lighter hardware
-ollama serve                   # if not already running as a service
-
-# 2. Backend
 cd backend
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python -m venv .venv
+# On Windows:
+.venv\Scripts\activate
+# On macOS/Linux:
+# source .venv/bin/activate
+
 pip install -r requirements.txt
 cp .env.example .env
-uvicorn app.main:app --reload --port 8000
 
-# 3. Frontend (new terminal)
+# Edit .env and configure your GEMINI_API_KEY if available:
+# GEMINI_API_KEY="your_api_key_here"
+# GEMINI_MODEL="gemini-3.6-flash"
+
+uvicorn app.main:app --reload --port 8000
+```
+
+Verify backend health at `http://localhost:8000/health`.
+
+### 2. Frontend Setup
+
+```bash
 cd frontend
 npm install
 cp .env.example .env
 npm run dev
 ```
 
-Open the frontend's printed URL (typically `http://localhost:5173`). The canvas works fully
-without the backend running (draw, save, load, export all work offline); only the AI loop needs
-the backend + Ollama reachable. `GET http://localhost:8000/health` reports whether Ollama is
-reachable and the configured model is installed.
+Open `http://localhost:5173` in your browser.
 
-## What's implemented
+---
 
-**Canvas** (unchanged from the pre-AI foundation -- see `docs/CANVAS_ARCHITECTURE.md` for depth):
-free drawing (pen/pencil/highlighter, pressure/tilt-aware), stroke eraser, select (click/marquee,
-move, resize), pan, cursor-anchored zoom, full undo/redo, save/load JSON with validation,
-localStorage autosave, PNG export cropped to content bounds, keyboard shortcuts, light/dark theme,
-viewport culling tested to 5,000+ strokes.
+## Keyboard Shortcuts
 
-**AI integration** (this pass):
-- Idle-pause detection (700ms configurable) and manual trigger (Ctrl+Enter)
-- Region-of-interest strategy: recent strokes -> selection -> viewport, in that order
-- WebP/PNG rasterization of just the relevant region (never a full-window screenshot)
-- FastAPI backend calling a local Ollama multimodal model, returning structured
-  `{type: markdown|latex, content, title, confidence}`
-- Draft objects rendered **on the canvas** (not a chat sidebar) -- movable, resizable, Markdown/
-  LaTeX rendered and sanitized, Accept/Discard actions, accept is undoable
-- Request cancellation and automatic supersession (a new request aborts an in-flight older one)
-- Duplicate-request prevention via a stroke-version signature, so idle-pause doesn't spam
-  identical requests
-- Full latency/token/cost instrumentation, JSONL trace file, session KPIs (DAR/WTR/BC/CPAD), and
-  a live metrics panel in the UI
-
-**Intentionally not implemented** (out of scope per the assignment): authentication, accounts,
-collaboration, plugin systems, desktop/mobile packaging, cloud deployment, Docker orchestration,
-custom handwriting recognition, a chat sidebar.
-
-## Keyboard shortcuts
-
-| Key | Action |
-|---|---|
-| `P` / `B` / `H` / `E` / `V` | Pen / Pencil / Highlighter / Eraser / Select |
-| `Space` + drag, or middle-mouse drag | Pan |
-| Scroll / pinch | Zoom (cursor-anchored) |
+| Shortcut | Tool / Action |
+| :--- | :--- |
+| `P` / `B` / `H` | Pen / Pencil / Highlighter |
+| `E` / `V` / `X` | Eraser / Select / Text Tool |
+| `R` / `O` / `T` / `D` | Rectangle / Circle / Triangle / Diamond |
+| `A` | Connector / Arrow Tool |
+| `Space` + Drag / Middle Mouse | Infinite Canvas Pan |
+| `Scroll` / `Pinch` | Cursor-Anchored Zoom |
 | `Ctrl`/`Cmd` + `Z` | Undo |
 | `Ctrl`/`Cmd` + `Shift` + `Z` (or `Ctrl`/`Cmd` + `Y`) | Redo |
-| `Delete` / `Backspace` | Delete selection |
-| `Escape` | Cancel selection |
-| `Ctrl`/`Cmd` + `S` / `O` / `E` | Save / Load / Export PNG |
-| `Ctrl`/`Cmd` + `Enter` | Analyze region now (manual AI trigger) |
-| `Ctrl`/`Cmd` + `Shift` + `M` | Toggle AI metrics panel |
-| `?` | In-app shortcut list |
+| `Delete` / `Backspace` | Delete selected objects |
+| `Ctrl`/`Cmd` + `S` / `O` / `E` | Save Canvas / Load Canvas / Export PNG |
+| **`Ctrl`/`Cmd` + `Enter`** | **Analyze Canvas with AI (Explicit Trigger)** |
+| `Ctrl`/`Cmd` + `Shift` + `M` | Toggle AI Metrics & KPI Panel |
+| `?` | Toggle Shortcut Cheat Sheet |
 
-## Testing
+---
+
+## Test Suite Execution
+
+All test suites have been verified with 100% passing tests:
 
 ```bash
-# Frontend: 54 tests (coordinates, persistence, region extraction/ROI, undo/redo including AI
-# objects, AI draft lifecycle, pending-request cancellation, API client error mapping)
-cd frontend && npm test
+# Run Frontend Tests (72 Unit Tests across 11 Test Suites)
+cd frontend
+npm test
 
-# Backend: 40 tests against a mocked Ollama provider (no real Ollama needed to run these)
-cd backend && python -m pytest tests/ -v
+# Typecheck Frontend TypeScript (0 errors)
+npx tsc --noEmit
+
+# Run Backend Tests (54 Unit Tests)
+cd backend
+pytest -v
 ```
 
-## Known limitations
+---
 
-- **Ollama connectivity has not been verified against a real model in this environment** -- the
-  backend was built and tested against a `FakeProvider` test double implementing the same
-  interface `OllamaProvider` does (see `backend/README.md`). Run `GET /health` after setup to
-  confirm your local Ollama + model are actually reachable before relying on the AI loop.
-- **Non-streaming Ollama calls**: `ttft`/`t_stream` are approximated (identical to `ttfb`/`0`) --
-  see `docs/METRICS.md` section 2 for the honest accounting and what streaming support would need.
-- **AI objects aren't included in PNG export** or canvas viewport culling (they're a DOM overlay,
-  not canvas-rasterized) -- see `docs/AI_INTEGRATION.md` section 1 for why, and what a spatial-
-  culling follow-up would look like if AI object counts ever grew large.
-- **No spatial index** for strokes past ~5,000-10,000 -- unchanged from the canvas foundation,
-  see `docs/CANVAS_ARCHITECTURE.md` section 7.
-- Everything else in `docs/CANVAS_ARCHITECTURE.md` section 15 (resize proportion locking, no
-  freeform lasso selection, single-file save/load) still applies -- the AI integration didn't
-  touch those.
+## Known Limitations
 
-## What should be implemented next
+1. **Non-Streaming Provider Execution**: Gemini and Ollama responses currently arrive as complete structured JSON bodies; `ttft` matches `ttfb` and `t_stream` is logged as 0ms.
+2. **DOM-Based LaTeX/Markdown Cards**: While native shapes, diagrams, and text are drawn on canvas layers, Rich Markdown/LaTeX answer cards render via an overlay layer with KaTeX for selection and math formatting.
+3. **Spatial Index Threshold**: Viewport culling uses a linear bounding box filter optimized for up to 5,000–10,000 elements; beyond that scale, an R-tree spatial index would be beneficial.
 
-1. **Streaming Ollama responses** for real `ttft`/`t_stream` measurement (`docs/METRICS.md` §2).
-2. **PNG export including AI objects**, so an exported canvas matches what's visually on screen.
-3. **A connecting line/arrow** between a draft card and the ROI that produced it (`sourceBounds`
-   is already stored on every `AiObject`, ready for this).
-4. **Verify against real `qwen3-vl:8b`/`4b`** and tune the prompt (`backend/app/ai/prompts.py`)
-   based on actual model behavior -- it has only been exercised against a scripted fake so far.
-5. **Viewport culling for AI objects** if usage ever produces large numbers of them on one canvas.
+---
+
+## Documentation Index
+
+- [CANVAS_ARCHITECTURE.md](docs/CANVAS_ARCHITECTURE.md) — Coordinate transforms, spatial math, rendering scheduler, and undo/redo architecture.
+- [AI_INTEGRATION.md](docs/AI_INTEGRATION.md) — Multimodal context extraction, prompt engineering, provider routing, and draft lifecycles.
+- [METRICS.md](docs/METRICS.md) — Latency segmentation, token accounting, rate tables, KPI definitions, and trace schema.
+- [REPORT.md](REPORT.md) — Empirical benchmark evaluation, latency distribution, optimization analysis, and trade-off comparisons.
+- [IDEAS.md](IDEAS.md) — 10 original canvas-native product proposals and detailed design for the shipped Topological Diagram Engine.
+- [ATTRIBUTION.md](ATTRIBUTION.md) — Third-party licenses, models, and reference project acknowledgments.
+- [AI_USAGE.md](AI_USAGE.md) — Full disclosure of AI assistant usage, debugging trajectories, and manual verification steps.
