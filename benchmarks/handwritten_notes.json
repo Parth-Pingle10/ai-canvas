@@ -1,0 +1,196 @@
+{
+  "version": 1,
+  "canvas": {
+    "name": "Meeting Notes & Checklist"
+  },
+  "camera": {
+    "x": 200,
+    "y": 150,
+    "zoom": 1
+  },
+  "strokes": [
+    {
+      "id": "s5_b1",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 50,
+          "y": 50
+        },
+        {
+          "x": 55,
+          "y": 50
+        },
+        {
+          "x": 55,
+          "y": 55
+        },
+        {
+          "x": 50,
+          "y": 55
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 50,
+        "minY": 50,
+        "maxX": 55,
+        "maxY": 55
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s5_t1",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 70,
+          "y": 52
+        },
+        {
+          "x": 180,
+          "y": 52
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 70,
+        "minY": 52,
+        "maxX": 180,
+        "maxY": 52
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s5_b2",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 50,
+          "y": 80
+        },
+        {
+          "x": 55,
+          "y": 80
+        },
+        {
+          "x": 55,
+          "y": 85
+        },
+        {
+          "x": 50,
+          "y": 85
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 50,
+        "minY": 80,
+        "maxX": 55,
+        "maxY": 85
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s5_t2",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 70,
+          "y": 82
+        },
+        {
+          "x": 210,
+          "y": 82
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 70,
+        "minY": 82,
+        "maxX": 210,
+        "maxY": 82
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s5_b3",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 50,
+          "y": 110
+        },
+        {
+          "x": 55,
+          "y": 110
+        },
+        {
+          "x": 55,
+          "y": 115
+        },
+        {
+          "x": 50,
+          "y": 115
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 50,
+        "minY": 110,
+        "maxX": 55,
+        "maxY": 115
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s5_t3",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 70,
+          "y": 112
+        },
+        {
+          "x": 160,
+          "y": 112
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 70,
+        "minY": 112,
+        "maxX": 160,
+        "maxY": 112
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    }
+  ],
+  "aiObjects": [],
+  "createdAt": 1700000000000,
+  "updatedAt": 1700000000000
+}

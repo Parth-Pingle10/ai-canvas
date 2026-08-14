@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "canvas": {
+    "name": "Right Triangle Diagram"
+  },
+  "camera": {
+    "x": 200,
+    "y": 150,
+    "zoom": 1
+  },
+  "strokes": [
+    {
+      "id": "s3_h",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 50,
+          "y": 200
+        },
+        {
+          "x": 250,
+          "y": 200
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 4,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 50,
+        "minY": 200,
+        "maxX": 250,
+        "maxY": 200
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s3_v",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 50,
+          "y": 50
+        },
+        {
+          "x": 50,
+          "y": 200
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 4,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 50,
+        "minY": 50,
+        "maxX": 50,
+        "maxY": 200
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s3_diag",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 50,
+          "y": 50
+        },
+        {
+          "x": 250,
+          "y": 200
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 4,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 50,
+        "minY": 50,
+        "maxX": 250,
+        "maxY": 200
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s3_box1",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 50,
+          "y": 180
+        },
+        {
+          "x": 70,
+          "y": 180
+        },
+        {
+          "x": 70,
+          "y": 200
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 50,
+        "minY": 180,
+        "maxX": 70,
+        "maxY": 200
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s3_labelA",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 40,
+          "y": 45
+        },
+        {
+          "x": 30,
+          "y": 60
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 30,
+        "minY": 45,
+        "maxX": 40,
+        "maxY": 60
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s3_labelB",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 260,
+          "y": 210
+        },
+        {
+          "x": 270,
+          "y": 210
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 260,
+        "minY": 210,
+        "maxX": 270,
+        "maxY": 210
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    }
+  ],
+  "aiObjects": [],
+  "createdAt": 1700000000000,
+  "updatedAt": 1700000000000
+}

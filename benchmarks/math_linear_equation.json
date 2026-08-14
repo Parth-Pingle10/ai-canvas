@@ -1,0 +1,308 @@
+{
+  "version": 1,
+  "canvas": {
+    "name": "Linear Equation 2x+5=15"
+  },
+  "camera": {
+    "x": 200,
+    "y": 150,
+    "zoom": 1
+  },
+  "strokes": [
+    {
+      "id": "s1_2",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 50,
+          "y": 60
+        },
+        {
+          "x": 70,
+          "y": 50
+        },
+        {
+          "x": 50,
+          "y": 90
+        },
+        {
+          "x": 75,
+          "y": 90
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 50,
+        "minY": 50,
+        "maxX": 75,
+        "maxY": 90
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s1_x1",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 85,
+          "y": 60
+        },
+        {
+          "x": 105,
+          "y": 90
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 85,
+        "minY": 60,
+        "maxX": 105,
+        "maxY": 90
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s1_x2",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 105,
+          "y": 60
+        },
+        {
+          "x": 85,
+          "y": 90
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 85,
+        "minY": 60,
+        "maxX": 105,
+        "maxY": 90
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s1_p1",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 125,
+          "y": 55
+        },
+        {
+          "x": 125,
+          "y": 95
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 125,
+        "minY": 55,
+        "maxX": 125,
+        "maxY": 95
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s1_p2",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 110,
+          "y": 75
+        },
+        {
+          "x": 140,
+          "y": 75
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 110,
+        "minY": 75,
+        "maxX": 140,
+        "maxY": 75
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s1_5",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 170,
+          "y": 55
+        },
+        {
+          "x": 150,
+          "y": 55
+        },
+        {
+          "x": 150,
+          "y": 75
+        },
+        {
+          "x": 170,
+          "y": 80
+        },
+        {
+          "x": 150,
+          "y": 95
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 150,
+        "minY": 55,
+        "maxX": 170,
+        "maxY": 95
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s1_eq1",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 185,
+          "y": 70
+        },
+        {
+          "x": 205,
+          "y": 70
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 185,
+        "minY": 70,
+        "maxX": 205,
+        "maxY": 70
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s1_eq2",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 185,
+          "y": 80
+        },
+        {
+          "x": 205,
+          "y": 80
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 185,
+        "minY": 80,
+        "maxX": 205,
+        "maxY": 80
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s1_1",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 220,
+          "y": 55
+        },
+        {
+          "x": 220,
+          "y": 95
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 220,
+        "minY": 55,
+        "maxX": 220,
+        "maxY": 95
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s1_5b",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 245,
+          "y": 55
+        },
+        {
+          "x": 230,
+          "y": 55
+        },
+        {
+          "x": 230,
+          "y": 75
+        },
+        {
+          "x": 250,
+          "y": 80
+        },
+        {
+          "x": 230,
+          "y": 95
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 230,
+        "minY": 55,
+        "maxX": 250,
+        "maxY": 95
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    }
+  ],
+  "aiObjects": [],
+  "createdAt": 1700000000000,
+  "updatedAt": 1700000000000
+}

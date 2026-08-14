@@ -1,0 +1,242 @@
+{
+  "version": 1,
+  "canvas": {
+    "name": "Logic Flowchart"
+  },
+  "camera": {
+    "x": 200,
+    "y": 150,
+    "zoom": 1
+  },
+  "strokes": [
+    {
+      "id": "s4_box1",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 60,
+          "y": 40
+        },
+        {
+          "x": 160,
+          "y": 40
+        },
+        {
+          "x": 160,
+          "y": 80
+        },
+        {
+          "x": 60,
+          "y": 80
+        },
+        {
+          "x": 60,
+          "y": 40
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 60,
+        "minY": 40,
+        "maxX": 160,
+        "maxY": 80
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s4_arr1",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 110,
+          "y": 80
+        },
+        {
+          "x": 110,
+          "y": 130
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 110,
+        "minY": 80,
+        "maxX": 110,
+        "maxY": 130
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s4_head1",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 105,
+          "y": 120
+        },
+        {
+          "x": 110,
+          "y": 130
+        },
+        {
+          "x": 115,
+          "y": 120
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 105,
+        "minY": 120,
+        "maxX": 115,
+        "maxY": 130
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s4_diamond",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 110,
+          "y": 130
+        },
+        {
+          "x": 160,
+          "y": 160
+        },
+        {
+          "x": 110,
+          "y": 190
+        },
+        {
+          "x": 60,
+          "y": 160
+        },
+        {
+          "x": 110,
+          "y": 130
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 60,
+        "minY": 130,
+        "maxX": 160,
+        "maxY": 190
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s4_arr2",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 160,
+          "y": 160
+        },
+        {
+          "x": 220,
+          "y": 160
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 160,
+        "minY": 160,
+        "maxX": 220,
+        "maxY": 160
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s4_head2",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 210,
+          "y": 155
+        },
+        {
+          "x": 220,
+          "y": 160
+        },
+        {
+          "x": 210,
+          "y": 165
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 210,
+        "minY": 155,
+        "maxX": 220,
+        "maxY": 165
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s4_box2",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 220,
+          "y": 140
+        },
+        {
+          "x": 300,
+          "y": 140
+        },
+        {
+          "x": 300,
+          "y": 180
+        },
+        {
+          "x": 220,
+          "y": 180
+        },
+        {
+          "x": 220,
+          "y": 140
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 220,
+        "minY": 140,
+        "maxX": 300,
+        "maxY": 180
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    }
+  ],
+  "aiObjects": [],
+  "createdAt": 1700000000000,
+  "updatedAt": 1700000000000
+}

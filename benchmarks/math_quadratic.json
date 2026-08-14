@@ -1,0 +1,434 @@
+{
+  "version": 1,
+  "canvas": {
+    "name": "Quadratic Equation"
+  },
+  "camera": {
+    "x": 200,
+    "y": 150,
+    "zoom": 1
+  },
+  "strokes": [
+    {
+      "id": "s2_x1",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 50,
+          "y": 70
+        },
+        {
+          "x": 70,
+          "y": 100
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 50,
+        "minY": 70,
+        "maxX": 70,
+        "maxY": 100
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s2_x2",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 70,
+          "y": 70
+        },
+        {
+          "x": 50,
+          "y": 100
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 50,
+        "minY": 70,
+        "maxX": 70,
+        "maxY": 100
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s2_pow",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 75,
+          "y": 60
+        },
+        {
+          "x": 85,
+          "y": 55
+        },
+        {
+          "x": 75,
+          "y": 70
+        },
+        {
+          "x": 87,
+          "y": 70
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 75,
+        "minY": 55,
+        "maxX": 87,
+        "maxY": 70
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s2_minus",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 95,
+          "y": 85
+        },
+        {
+          "x": 110,
+          "y": 85
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 95,
+        "minY": 85,
+        "maxX": 110,
+        "maxY": 85
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s2_4a",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 125,
+          "y": 65
+        },
+        {
+          "x": 120,
+          "y": 85
+        },
+        {
+          "x": 135,
+          "y": 85
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 120,
+        "minY": 65,
+        "maxX": 135,
+        "maxY": 85
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s2_4b",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 130,
+          "y": 65
+        },
+        {
+          "x": 130,
+          "y": 100
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 130,
+        "minY": 65,
+        "maxX": 130,
+        "maxY": 100
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s2_x3",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 145,
+          "y": 70
+        },
+        {
+          "x": 165,
+          "y": 100
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 145,
+        "minY": 70,
+        "maxX": 165,
+        "maxY": 100
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s2_x4",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 165,
+          "y": 70
+        },
+        {
+          "x": 145,
+          "y": 100
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 145,
+        "minY": 70,
+        "maxX": 165,
+        "maxY": 100
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s2_plus1",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 180,
+          "y": 75
+        },
+        {
+          "x": 180,
+          "y": 95
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 180,
+        "minY": 75,
+        "maxX": 180,
+        "maxY": 95
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s2_plus2",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 170,
+          "y": 85
+        },
+        {
+          "x": 190,
+          "y": 85
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 170,
+        "minY": 85,
+        "maxX": 190,
+        "maxY": 85
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s2_4c",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 205,
+          "y": 65
+        },
+        {
+          "x": 200,
+          "y": 85
+        },
+        {
+          "x": 215,
+          "y": 85
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 200,
+        "minY": 65,
+        "maxX": 215,
+        "maxY": 85
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s2_4d",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 210,
+          "y": 65
+        },
+        {
+          "x": 210,
+          "y": 100
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 210,
+        "minY": 65,
+        "maxX": 210,
+        "maxY": 100
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s2_eq1",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 225,
+          "y": 80
+        },
+        {
+          "x": 240,
+          "y": 80
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 225,
+        "minY": 80,
+        "maxX": 240,
+        "maxY": 80
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s2_eq2",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 225,
+          "y": 90
+        },
+        {
+          "x": 240,
+          "y": 90
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 225,
+        "minY": 90,
+        "maxX": 240,
+        "maxY": 90
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    },
+    {
+      "id": "s2_zero",
+      "type": "stroke",
+      "points": [
+        {
+          "x": 255,
+          "y": 70
+        },
+        {
+          "x": 270,
+          "y": 70
+        },
+        {
+          "x": 270,
+          "y": 100
+        },
+        {
+          "x": 255,
+          "y": 100
+        },
+        {
+          "x": 255,
+          "y": 70
+        }
+      ],
+      "color": "#1e1e1e",
+      "width": 3,
+      "tool": "pen",
+      "opacity": 1.0,
+      "bounds": {
+        "minX": 255,
+        "minY": 70,
+        "maxX": 270,
+        "maxY": 100
+      },
+      "createdAt": 1700000000000,
+      "version": 1
+    }
+  ],
+  "aiObjects": [],
+  "createdAt": 1700000000000,
+  "updatedAt": 1700000000000
+}
