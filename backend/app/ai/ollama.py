@@ -96,7 +96,7 @@ class OllamaProvider(MultimodalModel):
             "images": [image_b64],
             "stream": False,
             "format": "json",
-            "options": {"temperature": 0.2},
+            "options": {"temperature": 0.1},
         }
 
         t_dispatch = time.perf_counter()

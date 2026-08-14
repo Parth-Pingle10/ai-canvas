@@ -108,30 +108,9 @@ export interface AnalyzeRequestPayload {
   tDispatchMs: number;
 }
 
-async function fetchWithBaseUrls(path: string, init?: RequestInit): Promise<Response> {
-  const primary = API_BASE_URL ? `${API_BASE_URL.replace(/\/$/, "")}${path}` : path;
-  try {
-    return await fetch(primary, init);
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") throw err;
-
-    // Fallback candidates in case of localhost/127.0.0.1/proxy differences
-    const candidates: string[] = [
-      `http://127.0.0.1:8000${path}`,
-      `http://localhost:8000${path}`,
-      path,
-    ].filter((url) => url !== primary);
-
-    for (const candidate of candidates) {
-      try {
-        const resp = await fetch(candidate, init);
-        return resp;
-      } catch (innerErr) {
-        if (innerErr instanceof DOMException && innerErr.name === "AbortError") throw innerErr;
-      }
-    }
-    throw err;
-  }
+async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
+  const url = API_BASE_URL ? `${API_BASE_URL.replace(/\/$/, "")}${path}` : path;
+  return await fetch(url, init);
 }
 
 export async function analyzeRegion(
@@ -163,7 +142,7 @@ export async function analyzeRegion(
 
   let resp: Response;
   try {
-    resp = await fetchWithBaseUrls("/api/analyze", {
+    resp = await fetchApi("/api/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -185,11 +164,15 @@ export async function analyzeRegion(
   return data as AnalyzeResponse;
 }
 
-export type OutcomeType = "accepted" | "discarded" | "cancelled" | "superseded" | "error" | "timeout";
+const reportedOutcomes = new Set<string>();
 
 export async function reportOutcome(requestId: string, outcome: OutcomeType): Promise<void> {
+  const key = `${requestId}:${outcome}`;
+  if (reportedOutcomes.has(key)) return;
+  reportedOutcomes.add(key);
+
   try {
-    await fetchWithBaseUrls("/api/metrics/outcome", {
+    await fetchApi("/api/metrics/outcome", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ request_id: requestId, outcome }),
@@ -219,7 +202,7 @@ export interface SessionMetrics {
 
 export async function fetchSessionMetrics(sessionId: string): Promise<SessionMetrics | null> {
   try {
-    const resp = await fetchWithBaseUrls(
+    const resp = await fetchApi(
       `/api/metrics/session?session_id=${encodeURIComponent(sessionId)}`
     );
     if (!resp.ok) return null;
@@ -238,7 +221,7 @@ export interface HealthStatus {
 
 export async function fetchHealth(): Promise<HealthStatus | null> {
   try {
-    const resp = await fetchWithBaseUrls("/health");
+    const resp = await fetchApi("/health");
     if (!resp.ok) return null;
     return (await resp.json()) as HealthStatus;
   } catch {

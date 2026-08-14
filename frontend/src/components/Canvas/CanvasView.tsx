@@ -74,7 +74,11 @@ type GestureMode =
 
 const PICK_RADIUS_SCREEN_PX = 10;
 
-export function CanvasView() {
+export interface CanvasViewProps {
+  onManualAnalyze?: () => void;
+}
+
+export function CanvasView({ onManualAnalyze }: CanvasViewProps = {}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<CanvasRenderer | null>(null);
@@ -548,6 +552,22 @@ export function CanvasView() {
       }
 
       if (currentTool === "text") {
+        const hit = hitTestAt(world);
+        if (hit && hit.type === "text") {
+          const existing = textObjectsRef.current.find((t) => t.id === hit.id);
+          if (existing) {
+            setInlineTextEditor({
+              worldX: existing.x,
+              worldY: existing.y,
+              initialText: existing.text,
+              fontSize: existing.fontSize || 18,
+              color: existing.fontColor || "#1e1e1e",
+              existingId: existing.id,
+            });
+            gestureRef.current = null;
+            return;
+          }
+        }
         const settings = toolSettingsRef.current.text;
         setInlineTextEditor({
           worldX: world.x,
@@ -556,6 +576,7 @@ export function CanvasView() {
           fontSize: settings.width || 18,
           color: settings.color || "#1e1e1e",
         });
+        gestureRef.current = null;
         return;
       }
 
@@ -993,44 +1014,97 @@ export function CanvasView() {
         const rect = containerRef.current?.getBoundingClientRect();
         const vw = rect?.width || window.innerWidth;
         const vh = rect?.height || window.innerHeight;
-        const screen = worldToScreen(
-          { x: inlineTextEditor.worldX, y: inlineTextEditor.worldY },
-          camera,
-          vw,
-          vh
-        );
         return (
-          <textarea
-            autoFocus
-            className="canvas-inline-text-editor"
-            style={{
-              position: "absolute",
-              left: screen.x,
-              top: screen.y,
-              fontSize: `${Math.max(12, inlineTextEditor.fontSize * camera.zoom)}px`,
-              color: inlineTextEditor.color,
-              fontFamily: '"Trebuchet MS", "Segoe UI", system-ui, sans-serif',
-              lineHeight: 1.35,
-              minWidth: `${Math.max(160, 160 * camera.zoom)}px`,
-              minHeight: `${Math.max(40, 40 * camera.zoom)}px`,
-            }}
-            defaultValue={inlineTextEditor.initialText}
-            placeholder="Type canvas text or AI prompt..."
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                commitInlineText(e.currentTarget.value);
-              } else if (e.key === "Escape") {
-                setInlineTextEditor(null);
-              }
-            }}
-            onBlur={(e) => {
-              commitInlineText(e.currentTarget.value);
-            }}
+          <InlineTextEditorComponent
+            worldX={inlineTextEditor.worldX}
+            worldY={inlineTextEditor.worldY}
+            initialText={inlineTextEditor.initialText}
+            fontSize={inlineTextEditor.fontSize}
+            color={inlineTextEditor.color}
+            camera={camera}
+            viewportWidth={vw}
+            viewportHeight={vh}
+            onCommit={commitInlineText}
+            onCancel={() => setInlineTextEditor(null)}
+            onManualAnalyze={onManualAnalyze}
           />
         );
       })()}
     </div>
+  );
+}
+
+function InlineTextEditorComponent({
+  worldX,
+  worldY,
+  initialText,
+  fontSize,
+  color,
+  camera,
+  viewportWidth,
+  viewportHeight,
+  onCommit,
+  onCancel,
+  onManualAnalyze,
+}: {
+  worldX: number;
+  worldY: number;
+  initialText: string;
+  fontSize: number;
+  color: string;
+  camera: { x: number; y: number; zoom: number };
+  viewportWidth: number;
+  viewportHeight: number;
+  onCommit: (text: string) => void;
+  onCancel: () => void;
+  onManualAnalyze?: () => void;
+}) {
+  const [val, setVal] = useState(initialText);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+      const len = textareaRef.current.value.length;
+      textareaRef.current.setSelectionRange(len, len);
+    }
+  }, []);
+
+  const screen = worldToScreen({ x: worldX, y: worldY }, camera, viewportWidth, viewportHeight);
+
+  return (
+    <textarea
+      ref={textareaRef}
+      className="canvas-inline-text-editor"
+      style={{
+        position: "absolute",
+        left: screen.x,
+        top: screen.y,
+        fontSize: `${Math.max(12, fontSize * camera.zoom)}px`,
+        color,
+        caretColor: color,
+        fontFamily: '"Trebuchet MS", "Lucida Sans Unicode", "Segoe UI", Roboto, sans-serif',
+        lineHeight: 1.35,
+        minWidth: `${Math.max(30, 30 * camera.zoom)}px`,
+        minHeight: `${Math.max(24, 24 * camera.zoom)}px`,
+      }}
+      value={val}
+      onChange={(e) => setVal(e.target.value)}
+      onKeyDown={(e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+          e.preventDefault();
+          onCommit(val);
+          onManualAnalyze?.();
+        } else if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          onCommit(val);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
+      onBlur={() => onCommit(val)}
+    />
   );
 }
 

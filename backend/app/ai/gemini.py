@@ -67,7 +67,9 @@ class GeminiProvider(MultimodalModel):
         config = types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
             response_mime_type="application/json",
-            temperature=0.2,
+            temperature=0.1,
+            top_p=0.9,
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
 
         t_start = time.perf_counter()

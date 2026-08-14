@@ -146,7 +146,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <CanvasView />
+      <CanvasView onManualAnalyze={triggerManualAnalysis} />
       <AiObjectLayer />
       <AiStatusBadge />
       <Toolbar

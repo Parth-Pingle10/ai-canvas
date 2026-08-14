@@ -44,15 +44,17 @@
 }
 
 .canvas-inline-text-editor {
-  background: rgba(255, 255, 255, 0.98);
-  border: 1.5px solid #4c6ef5;
-  border-radius: 6px;
-  box-shadow: 0 4px 18px rgba(76, 110, 245, 0.20);
-  padding: 6px 10px;
+  background: transparent;
+  border: 1px dashed rgba(76, 110, 245, 0.45);
+  border-radius: 4px;
+  box-shadow: none;
+  padding: 2px 4px;
   outline: none;
-  resize: both;
-  overflow: auto;
+  resize: none;
+  overflow: hidden;
   z-index: 25;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 @media (max-width: 760px) {

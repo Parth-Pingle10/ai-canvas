@@ -30,59 +30,43 @@ export interface FocusCameraOptions {
 }
 
 /**
- * Calculates a smooth, context-preserving camera view to focus generated AI content.
- * Respects user's current zoom if content fits; zooms in/out gracefully if content is off-screen.
+ * Computes the unified bounding box encompassing an array of object bounding boxes.
+ */
+export function getObjectsBounds(boundsList: BoundingBox[]): BoundingBox {
+  if (boundsList.length === 0) {
+    return { minX: 0, minY: 0, maxX: 100, maxY: 100 };
+  }
+  return boundsList.reduce<BoundingBox>((acc, b) => unionBounds(acc, b), boundsList[0]);
+}
+
+/**
+ * Calculates an intelligent, adaptive camera view focusing the COMPLETE AI-generated result.
+ * Adds visual padding and scales zoom to ensure all generated shapes, connectors, and text fit comfortably.
  */
 export function calculateFocusCamera(
-  targetBounds: BoundingBox,
+  resultBounds: BoundingBox,
   options: FocusCameraOptions
 ): Camera {
   const {
     viewportWidth,
     viewportHeight,
-    currentCamera,
-    sourceBounds,
-    paddingFraction = 0.22,
-    minZoom = 0.55,
-    maxZoom = 1.3,
+    paddingFraction = 0.18,
+    minZoom = 0.6,
+    maxZoom = 1.2,
   } = options;
 
-  let framingBounds = targetBounds;
-  if (sourceBounds) {
-    const dist = Math.hypot(
-      (targetBounds.minX + targetBounds.maxX) / 2 - (sourceBounds.minX + sourceBounds.maxX) / 2,
-      (targetBounds.minY + targetBounds.maxY) / 2 - (sourceBounds.minY + sourceBounds.maxY) / 2
-    );
-    if (dist < 2500) {
-      framingBounds = unionBounds(targetBounds, sourceBounds);
-    }
-  }
+  const contentW = Math.max(60, boundsWidth(resultBounds));
+  const contentH = Math.max(60, boundsHeight(resultBounds));
+  const targetCenterX = (resultBounds.minX + resultBounds.maxX) / 2;
+  const targetCenterY = (resultBounds.minY + resultBounds.maxY) / 2;
 
-  const contentW = Math.max(80, boundsWidth(framingBounds));
-  const contentH = Math.max(80, boundsHeight(framingBounds));
-  const targetCenterX = (framingBounds.minX + framingBounds.maxX) / 2;
-  const targetCenterY = (framingBounds.minY + framingBounds.maxY) / 2;
-
-  const availW = Math.max(200, viewportWidth * (1 - paddingFraction * 2));
-  const availH = Math.max(200, viewportHeight * (1 - paddingFraction * 2));
-  const fitZoom = Math.min(availW / contentW, availH / contentH);
-
-  let targetZoom = currentCamera.zoom;
-  const contentPixelsW = contentW * currentCamera.zoom;
-  const contentPixelsH = contentH * currentCamera.zoom;
-
-  if (contentPixelsW > viewportWidth * 0.88 || contentPixelsH > viewportHeight * 0.88) {
-    targetZoom = clamp(fitZoom, minZoom, maxZoom);
-  } else if (currentCamera.zoom < 0.5 && fitZoom > 0.75) {
-    targetZoom = clamp(fitZoom, 0.75, 1.15);
-  } else {
-    targetZoom = clamp(currentCamera.zoom, minZoom, maxZoom);
-  }
+  const availW = Math.max(100, viewportWidth * (1 - paddingFraction * 2));
+  const availH = Math.max(100, viewportHeight * (1 - paddingFraction * 2));
+  const fitZoom = clamp(Math.min(availW / contentW, availH / contentH), minZoom, maxZoom);
 
   return {
     x: targetCenterX,
     y: targetCenterY,
-    zoom: targetZoom,
+    zoom: fitZoom,
   };
 }
-

@@ -73,10 +73,12 @@ concept maps, multi-step workflows, or when cleaning a multi-node hand-drawn ske
    }
 
 ======================================================================
-STRICT RULES
+STRICT GROUNDING & INTEGRITY RULES
 ======================================================================
 - Always respond with a single valid JSON object matching one of the schemas above.
 - Do NOT wrap in markdown code fences or add introductory/concluding prose.
+- Strictly ground your response in the actual visible canvas content and explicit user instructions.
+- Do NOT invent or assume facts, relationships, entities, or labels that are not supported by the canvas.
 - For creation/diagram requests, dynamically generate meaningful, coherent nodes and edges reflecting the user's specific context.
 - Never output executable code (JS/Python/HTML).
 """

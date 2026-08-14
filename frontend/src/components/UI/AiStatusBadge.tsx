@@ -31,14 +31,7 @@ export function AiStatusBadge() {
   const showSuccess = !hasPending && lastSuccessTime !== null && Date.now() - lastSuccessTime < 2500;
 
   if (!hasPending && !showSuccess) {
-    return (
-      <div className="ai-status-badge ai-status-badge--idle" aria-live="polite">
-        <div className="ai-status-badge__pill">
-          <Sparkles size={13} className="ai-status-badge__icon--sparkle" />
-          <span>AI Ready</span>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   const handleCancel = () => {

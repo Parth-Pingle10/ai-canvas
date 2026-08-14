@@ -34,16 +34,17 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (isTypingTarget(e.target)) return;
-
       const mod = e.metaKey || e.ctrlKey;
       const key = e.key.toLowerCase();
 
+      // Ctrl + Enter always triggers explicit AI analysis
       if (mod && key === "enter") {
         e.preventDefault();
         handlers.onManualAnalyze();
         return;
       }
+
+      if (isTypingTarget(e.target)) return;
       if (mod && e.shiftKey && key === "m") {
         e.preventDefault();
         handlers.onToggleMetrics();

@@ -137,7 +137,7 @@ def _normalize_data(data: dict) -> dict:
 
         valid_nodes = []
         node_ids = set()
-        for idx, n in enumerate(raw_nodes):
+        for idx, n in enumerate(raw_nodes[:50]):  # Bounded node ceiling to prevent runaway generation
             if isinstance(n, dict):
                 nid = str(n.get("id") or n.get("key") or f"node_{idx + 1}").strip()
                 lbl = str(n.get("label") or n.get("text") or n.get("name") or nid).strip()
@@ -149,7 +149,8 @@ def _normalize_data(data: dict) -> dict:
             else:
                 continue
 
-            if nid and nid not in node_ids:
+            lbl = _clean_user_facing_text(lbl)
+            if nid and lbl and nid not in node_ids:
                 node_ids.add(nid)
                 valid_nodes.append({"id": nid, "label": lbl, "shape_type": st})
 
@@ -158,15 +159,17 @@ def _normalize_data(data: dict) -> dict:
             raw_edges = []
 
         valid_edges = []
-        for e in raw_edges:
+        seen_edges = set()
+        for e in raw_edges[:100]:  # Bounded edge ceiling
             if not isinstance(e, dict):
                 continue
             src = str(e.get("from_node") or e.get("from") or e.get("source") or e.get("src") or e.get("start") or "").strip()
             dst = str(e.get("to_node") or e.get("to") or e.get("target") or e.get("dst") or e.get("end") or "").strip()
-            lbl = str(e.get("label") or e.get("text") or "").strip()
+            lbl = _clean_user_facing_text(str(e.get("label") or e.get("text") or ""))
 
-            # Keep edges where both endpoints exist in valid nodes
-            if src in node_ids and dst in node_ids:
+            # Keep edges where both endpoints exist in valid nodes and avoid duplicates
+            if src in node_ids and dst in node_ids and (src, dst) not in seen_edges:
+                seen_edges.add((src, dst))
                 valid_edges.append({"from_node": src, "to_node": dst, "label": lbl})
 
         normalized["nodes"] = valid_nodes

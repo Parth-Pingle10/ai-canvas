@@ -54,17 +54,14 @@ export function useAiTrigger() {
   const recordRequestResult = useMetricsStore((s) => s.recordRequestResult);
   const recordOutcome = useMetricsStore((s) => s.recordOutcome);
 
-  // --- Dirty tracking across strokes, typed text objects, and shapes ---
+  // --- Track changes to identify dirty items for explicit Ctrl+Enter ROI computation ---
   useEffect(() => {
-    let hasChanges = false;
-
     if (prevStrokesRef.current !== strokes) {
       const prevVersions = new Map(prevStrokesRef.current.map((s) => [s.id, s.version]));
       for (const s of strokes) {
         if (prevVersions.get(s.id) !== s.version) dirtyStrokeIdsRef.current.add(s.id);
       }
       prevStrokesRef.current = strokes;
-      hasChanges = true;
     }
 
     if (prevTextsRef.current !== textObjects) {
@@ -73,7 +70,6 @@ export function useAiTrigger() {
         if (prevVersions.get(t.id) !== t.version) dirtyTextIdsRef.current.add(t.id);
       }
       prevTextsRef.current = textObjects;
-      hasChanges = true;
     }
 
     if (prevShapesRef.current !== shapes) {
@@ -82,24 +78,23 @@ export function useAiTrigger() {
         if (prevVersions.get(sh.id) !== sh.version) dirtyShapeIdsRef.current.add(sh.id);
       }
       prevShapesRef.current = shapes;
-      hasChanges = true;
     }
-
-    if (!hasChanges) return;
-
-    if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current);
-    idleTimerRef.current = window.setTimeout(() => {
-      void dispatch("idle_pause");
-    }, IDLE_DELAY_MS);
-
-    return () => {
-      if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strokes, textObjects, shapes]);
 
   const dispatch = useCallback(async (trigger: "idle_pause" | "manual") => {
     const state = useCanvasStore.getState();
+    const totalObjects =
+      state.strokes.length +
+      state.textObjects.length +
+      state.shapes.length +
+      state.connectors.length;
+
+    // Empty canvas protection
+    if (totalObjects === 0) {
+      pushNotice("generic", "Add something to the canvas before analyzing.");
+      return;
+    }
+
     const roi = computeRoi({
       strokes: state.strokes,
       shapes: state.shapes,
@@ -116,10 +111,6 @@ export function useAiTrigger() {
       ),
     });
 
-    const totalObjects = state.strokes.length + state.textObjects.length + state.shapes.length;
-    // Nothing to analyze at all (empty canvas, empty viewport) — skip quietly.
-    if (roi.source === "viewport" && totalObjects === 0) return;
-
     const signature = roiSignature(roi, state.strokes, state.textObjects, state.shapes);
 
     if (trigger === "idle_pause" && signature === lastSignatureRef.current) {
@@ -131,7 +122,6 @@ export function useAiTrigger() {
       const { requestId, controller } = inFlightRef.current;
       controller.abort();
       removePendingRequest(requestId);
-      void reportOutcome(requestId, "superseded");
       recordOutcome("superseded");
     }
 
