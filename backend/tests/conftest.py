@@ -14,19 +14,27 @@ from app.ai.base import (
     MultimodalModel,
     ProviderUnavailableError,
 )
-from app.dependencies import get_model_provider
+from app.dependencies import get_fallback_provider, get_model_provider
 from app.main import app
 
 
 class FakeProvider(MultimodalModel):
-    """A fully in-memory stand-in for OllamaProvider, so the test suite never
-    needs a real Ollama daemon. Behavior is controlled per-test via the
+    """A fully in-memory stand-in for AI providers, so the test suite never
+    needs a real cloud or Ollama daemon. Behavior is controlled per-test via the
     `mode` attribute."""
 
     def __init__(self) -> None:
         self.mode = "ok"
         self.response_json = '{"type": "markdown", "content": "x = 5", "title": "Solution", "confidence": 0.9}'
         self.calls = 0
+
+    @property
+    def provider_name(self) -> str:
+        return "ollama"
+
+    @property
+    def model_name(self) -> str:
+        return "qwen3-vl:4b"
 
     async def analyze(self, *, image_bytes, image_mime, prompt, context) -> ModelAnalyzeResult:
         self.calls += 1
@@ -84,6 +92,7 @@ def fake_provider() -> FakeProvider:
 @pytest.fixture
 def client(fake_provider: FakeProvider) -> TestClient:
     app.dependency_overrides[get_model_provider] = lambda: fake_provider
+    app.dependency_overrides[get_fallback_provider] = lambda: None
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

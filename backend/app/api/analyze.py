@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from app.ai.base import (
     MultimodalModel,
+    ModelAnalyzeResult,
     ModelTimeoutError,
     ModelUnavailableError,
     ProviderUnavailableError,
@@ -14,7 +15,7 @@ from app.ai.base import (
 from app.ai.parsing import DraftParseError, parse_draft_content
 from app.ai.prompts import build_user_prompt
 from app.config import Settings, get_settings
-from app.dependencies import get_model_provider
+from app.dependencies import get_fallback_provider, get_model_provider
 from app.images import InvalidImageError, decode_and_validate_image
 from app.metrics.cost import calculate_cost
 from app.metrics.instrumentation import measure_ms
@@ -41,11 +42,11 @@ _ERROR_STATUS = {
 }
 
 _ERROR_MESSAGES = {
-    AnalyzeErrorCode.ollama_unavailable: "Ollama is not running.",
-    AnalyzeErrorCode.model_unavailable: "Configured model is unavailable.",
-    AnalyzeErrorCode.timeout: "AI request timed out.",
+    AnalyzeErrorCode.ollama_unavailable: "Could not connect to Ollama. Make sure Ollama is running.",
+    AnalyzeErrorCode.model_unavailable: "Configured vision model is unavailable.",
+    AnalyzeErrorCode.timeout: "AI generation is taking longer than expected. You can try again.",
     AnalyzeErrorCode.invalid_model_output: "The model returned an invalid response.",
-    AnalyzeErrorCode.network_error: "Could not reach the AI backend.",
+    AnalyzeErrorCode.network_error: "Could not reach the AI service.",
 }
 
 
@@ -63,6 +64,8 @@ def _record_failure(
     settings: Settings,
     outcome: str,
     error_message: str,
+    provider: str = "gemini",
+    model: str = "gemini-2.5-flash",
     e2e_ms: float,
 ) -> None:
     record = TraceRecord(
@@ -70,8 +73,8 @@ def _record_failure(
         session_id=request.context.session_id,
         ts_start=now_iso(),
         trigger=request.trigger.value,
-        provider="ollama",
-        model=settings.ollama_model,
+        provider=provider,
+        model=model,
         config_id=f"cfg_{request.context.format.value}_{request.context.crop_width}",
         input={
             "crop_px": [request.context.crop_width, request.context.crop_height],
@@ -120,10 +123,11 @@ def _record_failure(
 async def analyze(
     request: AnalyzeRequest,
     provider: MultimodalModel = Depends(get_model_provider),
+    fallback_provider: MultimodalModel | None = Depends(get_fallback_provider),
     settings: Settings = Depends(get_settings),
 ):
     with measure_ms() as elapsed_total:
-        # 1. Decode + validate the image before it goes anywhere near the model.
+        # 1. Decode + validate the image before passing to the AI pipeline
         try:
             image = decode_and_validate_image(
                 request.image,
@@ -138,6 +142,8 @@ async def analyze(
                 settings=settings,
                 outcome="error",
                 error_message=str(exc),
+                provider=provider.provider_name,
+                model=provider.model_name,
                 e2e_ms=elapsed_total(),
             )
             return _error_response(
@@ -148,12 +154,16 @@ async def analyze(
             stroke_count=request.context.stroke_count,
             zoom=request.context.zoom,
             prompt_override=request.prompt_override,
+            canvas_texts=request.context.canvas_texts,
         )
 
-        # 2. Call the model provider, mapping every failure mode to a
-        #    specific, honest error — never a bare 500 with no context, and
-        #    never a silently-hung request (the provider enforces its own
-        #    timeout via AI_REQUEST_TIMEOUT_MS).
+        # 2. Call the primary provider with intelligent fallback
+        result: ModelAnalyzeResult | None = None
+        active_provider_name = provider.provider_name
+        active_model_name = provider.model_name
+        fallback_used = False
+        fallback_reason: str | None = None
+
         try:
             result = await provider.analyze(
                 image_bytes=image.data,
@@ -165,47 +175,139 @@ async def analyze(
                     "stroke_count": request.context.stroke_count,
                 },
             )
-        except ProviderUnavailableError as exc:
-            _record_failure(
-                request=request, settings=settings, outcome="error",
-                error_message=str(exc), e2e_ms=elapsed_total(),
-            )
+        except (ProviderUnavailableError, ModelUnavailableError, ModelTimeoutError, Exception) as primary_exc:
+            # Check if fallback provider is configured and available
+            if fallback_provider is not None and fallback_provider != provider:
+                fallback_reason = f"{type(primary_exc).__name__}: {primary_exc}"
+                fallback_used = True
+                active_provider_name = fallback_provider.provider_name
+                active_model_name = fallback_provider.model_name
+
+                try:
+                    result = await fallback_provider.analyze(
+                        image_bytes=image.data,
+                        image_mime=image.mime,
+                        prompt=prompt,
+                        context={
+                            "world_bounds": request.context.world_bounds.model_dump(),
+                            "zoom": request.context.zoom,
+                            "stroke_count": request.context.stroke_count,
+                        },
+                    )
+                except ProviderUnavailableError as exc:
+                    _record_failure(
+                        request=request,
+                        settings=settings,
+                        outcome="error",
+                        error_message=f"Primary ({primary_exc}) and fallback failed: {exc}",
+                        provider=active_provider_name,
+                        model=active_model_name,
+                        e2e_ms=elapsed_total(),
+                    )
+                    return _error_response(
+                        AnalyzeErrorCode.ollama_unavailable,
+                        request.request_id,
+                        detail="Primary and backup AI services are currently unavailable. Ensure Ollama is running.",
+                    )
+                except ModelTimeoutError as exc:
+                    _record_failure(
+                        request=request,
+                        settings=settings,
+                        outcome="timeout",
+                        error_message=f"Fallback timed out: {exc}",
+                        provider=active_provider_name,
+                        model=active_model_name,
+                        e2e_ms=elapsed_total(),
+                    )
+                    return _error_response(
+                        AnalyzeErrorCode.timeout,
+                        request.request_id,
+                        detail="AI generation is taking longer than expected. You can try again.",
+                    )
+                except Exception as exc:
+                    _record_failure(
+                        request=request,
+                        settings=settings,
+                        outcome="error",
+                        error_message=f"Fallback failed: {exc}",
+                        provider=active_provider_name,
+                        model=active_model_name,
+                        e2e_ms=elapsed_total(),
+                    )
+                    return _error_response(
+                        AnalyzeErrorCode.network_error, request.request_id, detail=str(exc)
+                    )
+            else:
+                # No fallback provider -> return typed error from primary
+                if isinstance(primary_exc, ModelTimeoutError):
+                    _record_failure(
+                        request=request,
+                        settings=settings,
+                        outcome="timeout",
+                        error_message=str(primary_exc),
+                        provider=active_provider_name,
+                        model=active_model_name,
+                        e2e_ms=elapsed_total(),
+                    )
+                    return _error_response(
+                        AnalyzeErrorCode.timeout, request.request_id, detail=str(primary_exc)
+                    )
+                if isinstance(primary_exc, ProviderUnavailableError):
+                    _record_failure(
+                        request=request,
+                        settings=settings,
+                        outcome="error",
+                        error_message=str(primary_exc),
+                        provider=active_provider_name,
+                        model=active_model_name,
+                        e2e_ms=elapsed_total(),
+                    )
+                    return _error_response(
+                        AnalyzeErrorCode.ollama_unavailable, request.request_id, detail=str(primary_exc)
+                    )
+                if isinstance(primary_exc, ModelUnavailableError):
+                    _record_failure(
+                        request=request,
+                        settings=settings,
+                        outcome="error",
+                        error_message=str(primary_exc),
+                        provider=active_provider_name,
+                        model=active_model_name,
+                        e2e_ms=elapsed_total(),
+                    )
+                    return _error_response(
+                        AnalyzeErrorCode.model_unavailable, request.request_id, detail=str(primary_exc)
+                    )
+                _record_failure(
+                    request=request,
+                    settings=settings,
+                    outcome="error",
+                    error_message=str(primary_exc),
+                    provider=active_provider_name,
+                    model=active_model_name,
+                    e2e_ms=elapsed_total(),
+                )
+                return _error_response(
+                    AnalyzeErrorCode.network_error, request.request_id, detail=str(primary_exc)
+                )
+
+        if result is None:
             return _error_response(
-                AnalyzeErrorCode.ollama_unavailable, request.request_id, detail=str(exc)
-            )
-        except ModelUnavailableError as exc:
-            _record_failure(
-                request=request, settings=settings, outcome="error",
-                error_message=str(exc), e2e_ms=elapsed_total(),
-            )
-            return _error_response(
-                AnalyzeErrorCode.model_unavailable, request.request_id, detail=str(exc)
-            )
-        except ModelTimeoutError as exc:
-            _record_failure(
-                request=request, settings=settings, outcome="timeout",
-                error_message=str(exc), e2e_ms=elapsed_total(),
-            )
-            return _error_response(
-                AnalyzeErrorCode.timeout, request.request_id, detail=str(exc)
-            )
-        except Exception as exc:  # never let an unexpected error crash the server
-            _record_failure(
-                request=request, settings=settings, outcome="error",
-                error_message=f"Unexpected error: {exc}", e2e_ms=elapsed_total(),
-            )
-            return _error_response(
-                AnalyzeErrorCode.network_error, request.request_id, detail=str(exc)
+                AnalyzeErrorCode.internal_error, request.request_id, detail="No output received from AI model."
             )
 
-        # 3. Parse + validate the model's structured output. A malformed
-        #    response is a recoverable/reportable failure, not a crash.
+        # 3. Parse and validate the model's structured output into universal DraftContent
         try:
             draft = parse_draft_content(result.raw_text)
         except DraftParseError as exc:
             _record_failure(
-                request=request, settings=settings, outcome="error",
-                error_message=str(exc), e2e_ms=elapsed_total(),
+                request=request,
+                settings=settings,
+                outcome="error",
+                error_message=str(exc),
+                provider=active_provider_name,
+                model=active_model_name,
+                e2e_ms=elapsed_total(),
             )
             return _error_response(
                 AnalyzeErrorCode.invalid_model_output,
@@ -223,7 +325,7 @@ async def analyze(
             ttfb=result.ttfb_ms,
             ttft=result.ttft_ms,
             t_stream=result.t_stream_ms,
-            t_render=None,  # reported by the frontend once the draft is actually painted
+            t_render=None,
             e2e=e2e_ms,
         )
 
@@ -232,8 +334,8 @@ async def analyze(
             session_id=request.context.session_id,
             ts_start=now_iso(),
             trigger=request.trigger.value,
-            provider="ollama",
-            model=settings.ollama_model,
+            provider=active_provider_name,
+            model=active_model_name,
             config_id=f"cfg_{request.context.format.value}_{request.context.crop_width}",
             input={
                 "crop_px": [request.context.crop_width, request.context.crop_height],
@@ -242,11 +344,13 @@ async def analyze(
                 "zoom": request.context.zoom,
                 "stroke_count": request.context.stroke_count,
                 "prompt_chars": len(prompt),
+                "fallback_used": fallback_used,
+                "fallback_reason": fallback_reason,
             },
             latency_ms=latency.model_dump(),
             tokens=tokens.model_dump(),
             cost_usd=cost.notional_hosted_cost_usd,
-            outcome="pending",  # updated by POST /api/metrics/outcome once the user acts
+            outcome="pending",
         )
         get_session_store().upsert(record)
         append_trace_line(record, settings)
@@ -254,9 +358,10 @@ async def analyze(
         return AnalyzeResponse(
             request_id=request.request_id,
             draft=draft,
-            model=settings.ollama_model,
-            provider="ollama",
+            model=active_model_name,
+            provider=active_provider_name,
             latency_ms=latency,
             tokens=tokens,
             cost_usd=cost.notional_hosted_cost_usd,
+            cached=False,
         )

@@ -17,8 +17,10 @@ backend/traces/*.jsonl
 
 # --- Environment files with real secrets ---
 .env
+*.env
 frontend/.env
 backend/.env
+test.py
 
 # --- Editor / OS ---
 .vscode/*

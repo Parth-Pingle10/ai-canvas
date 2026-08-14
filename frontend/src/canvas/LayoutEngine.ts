@@ -15,6 +15,8 @@ export interface LayoutOptions {
   layoutDirection?: "top_to_bottom" | "left_to_right";
   draftGroupId?: string;
   isDraft?: boolean;
+  sourceStrokeIds?: string[];
+  sourceBounds?: BoundingBox;
   strokeColor?: string;
   fillColor?: string;
 }
@@ -244,6 +246,8 @@ export function layoutDiagram(
       },
       status: isDraft ? "draft" : "confirmed",
       draftGroupId,
+      sourceStrokeIds: options.sourceStrokeIds,
+      sourceBounds: options.sourceBounds,
       createdAt: now,
       version: 1,
     };
@@ -303,6 +307,8 @@ export function layoutDiagram(
       },
       status: isDraft ? "draft" : "confirmed",
       draftGroupId,
+      sourceStrokeIds: options.sourceStrokeIds,
+      sourceBounds: options.sourceBounds,
       createdAt: now,
       version: 1,
     };

@@ -51,8 +51,6 @@ interface ToolbarProps {
   onClear: () => void;
   onToggleHelp: () => void;
   onManualAnalyze: () => void;
-  onToggleMetrics: () => void;
-  metricsOpen: boolean;
 }
 
 export function Toolbar({
@@ -62,8 +60,6 @@ export function Toolbar({
   onClear,
   onToggleHelp,
   onManualAnalyze,
-  onToggleMetrics,
-  metricsOpen,
 }: ToolbarProps) {
   const tool = useCanvasStore((s) => s.tool);
   const setTool = useCanvasStore((s) => s.setTool);
@@ -198,16 +194,6 @@ export function Toolbar({
           aria-label="Analyze region now"
         >
           <Sparkles size={18} />
-        </button>
-        <button
-          type="button"
-          className={`toolbar__button${metricsOpen ? " toolbar__button--active" : ""}`}
-          onClick={onToggleMetrics}
-          title="AI metrics (Ctrl+Shift+M)"
-          aria-pressed={metricsOpen}
-          aria-label="Toggle AI metrics panel"
-        >
-          <span className="toolbar__metrics-label">metrics</span>
         </button>
       </div>
 

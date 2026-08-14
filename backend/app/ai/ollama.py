@@ -21,6 +21,7 @@ reason about and cheap to test with a mocked provider.
 from __future__ import annotations
 
 import base64
+import re
 import time
 
 import httpx
@@ -39,17 +40,26 @@ from app.images import ensure_png_bytes
 def _extract_generate_text(data: dict) -> str:
     """Return the model's draft JSON text from an Ollama /api/generate body.
 
-    Most models put the answer in ``response``. Qwen3 "thinking" vision models
-    (e.g. qwen3-vl) often leave ``response`` empty and emit the structured JSON
-    in ``thinking`` instead — parsing only ``response`` makes every such call
-    look like ``invalid_model_output`` even when Ollama succeeded.
+    Cleanly extracts user-facing structured JSON without leaking raw thinking
+    or internal chain-of-thought tokens.
     """
     response = (data.get("response") or "").strip()
     if response:
+        # Strip internal thinking tags if model emitted them inside response
+        cleaned_resp = re.sub(r"<think>[\s\S]*?</think>", "", response).strip()
+        if cleaned_resp:
+            return cleaned_resp
         return response
+
     thinking = (data.get("thinking") or "").strip()
     if thinking:
-        return thinking
+        # If model emitted JSON in the thinking stream, extract only the JSON object
+        json_match = re.search(r"\{[\s\S]*\}", thinking)
+        if json_match:
+            return json_match.group(0).strip()
+        cleaned_thinking = re.sub(r"<think>[\s\S]*?</think>", "", thinking).strip()
+        return cleaned_thinking
+
     return ""
 
 
@@ -58,6 +68,10 @@ class OllamaProvider(MultimodalModel):
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._timeout_s = timeout_ms / 1000
+
+    @property
+    def provider_name(self) -> str:
+        return "ollama"
 
     @property
     def model_name(self) -> str:

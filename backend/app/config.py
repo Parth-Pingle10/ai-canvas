@@ -23,14 +23,24 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- Ollama / model provider -------------------------------------------------
+    # --- AI Provider Architecture ------------------------------------------------
+    ai_primary_provider: str = "gemini"  # "gemini" | "ollama"
+    ai_fallback_provider: str = "ollama"  # "ollama" | "none"
+
+    # --- Gemini (Primary) --------------------------------------------------------
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.6-flash"
+    gemini_request_timeout_ms: int = 30_000
+
+    # --- Ollama (Fallback / Local) -----------------------------------------------
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen3-vl:4b"
     ollama_fallback_model: str = "qwen3-vl:4b"
+    ollama_request_timeout_ms: int = 180_000
 
     # --- Request behavior ----------------------------------------------------------
     ai_idle_delay_ms: int = 700
-    ai_request_timeout_ms: int = 120_000
+    ai_request_timeout_ms: int = 180_000
 
     # --- Region-of-interest defaults (mirrored on the frontend; backend only
     #     uses these for validation bounds, not for performing extraction —

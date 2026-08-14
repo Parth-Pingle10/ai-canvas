@@ -1,10 +1,10 @@
-import { Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CanvasView } from "./components/Canvas/CanvasView";
 import { Toolbar } from "./components/Toolbar/Toolbar";
 import { HelpPanel } from "./components/UI/HelpPanel";
 import { NoticeStack } from "./components/UI/NoticeStack";
 import { MetricsPanel } from "./components/UI/MetricsPanel";
+import { AiStatusBadge } from "./components/UI/AiStatusBadge";
 import { AiObjectLayer } from "./components/AiLayer/AiObjectLayer";
 import { useCanvasStore } from "./state/canvasStore";
 import { useKeyboardShortcuts } from "./state/useKeyboardShortcuts";
@@ -26,16 +26,9 @@ const AUTOSAVE_INTERVAL_MS = 8000;
 export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [metricsOpen, setMetricsOpen] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">(() =>
-    window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light"
-  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { triggerManualAnalysis } = useAiTrigger();
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-  }, [theme]);
 
   const strokes = useCanvasStore((s) => s.strokes);
   const shapes = useCanvasStore((s) => s.shapes);
@@ -155,6 +148,7 @@ export default function App() {
     <div className="app">
       <CanvasView />
       <AiObjectLayer />
+      <AiStatusBadge />
       <Toolbar
         onSave={handleSave}
         onLoad={handleLoadClick}
@@ -162,22 +156,7 @@ export default function App() {
         onClear={handleClear}
         onToggleHelp={() => setHelpOpen((v) => !v)}
         onManualAnalyze={triggerManualAnalysis}
-        onToggleMetrics={() => setMetricsOpen((v) => !v)}
-        metricsOpen={metricsOpen}
       />
-      <div className="app__brand">
-        <span className="app__brand-dot" />
-        AI Canvas <span className="app__brand-sub">— foundation build</span>
-      </div>
-      <button
-        type="button"
-        className="theme-toggle"
-        onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
-        title="Toggle theme"
-        aria-label="Toggle theme"
-      >
-        {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
-      </button>
       <input
         ref={fileInputRef}
         type="file"

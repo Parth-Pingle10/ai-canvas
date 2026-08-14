@@ -61,15 +61,6 @@ export function AiObjectLayer() {
           viewportSize={viewportSize}
         />
       ))}
-      {pendingRequests.map((req) => (
-        <PendingCard
-          key={req.id}
-          requestId={req.id}
-          anchorBounds={req.anchorBounds}
-          camera={camera}
-          viewportSize={viewportSize}
-        />
-      ))}
     </div>
   );
 }
@@ -145,46 +136,6 @@ function useScreenPlacement(
     scaledWidth: bounds.width * camera.zoom,
     scaledHeight: bounds.height * camera.zoom,
   };
-}
-
-function PendingCard({
-  requestId,
-  anchorBounds,
-  camera,
-  viewportSize,
-}: {
-  requestId: string;
-  anchorBounds: WorldRect;
-  camera: { x: number; y: number; zoom: number };
-  viewportSize: { width: number; height: number };
-}) {
-  const { left, top, scaledWidth, scaledHeight } = useScreenPlacement(anchorBounds, camera, viewportSize);
-  const cancelPendingRequest = useCanvasStore((s) => s.cancelPendingRequest);
-  const recordOutcome = useMetricsStore((s) => s.recordOutcome);
-
-  const handleCancel = useCallback(() => {
-    cancelPendingRequest(requestId);
-    recordOutcome("cancelled");
-    void reportOutcome(requestId, "cancelled");
-  }, [requestId, cancelPendingRequest, recordOutcome]);
-
-  return (
-    <div className="ai-card-outer" style={{ left, top, width: scaledWidth, height: scaledHeight }}>
-      <div
-        className="ai-card ai-card--pending"
-        style={{ width: anchorBounds.width, height: anchorBounds.height, transform: `scale(${camera.zoom})` }}
-      >
-        <div className="ai-card__pending-body">
-          <Loader2 size={16} className="ai-card__spinner" />
-          <span>Analyzing…</span>
-          <span className="ai-card__request-id">#{requestId.slice(-6)}</span>
-        </div>
-        <button type="button" className="ai-card__btn ai-card__btn--ghost" onClick={handleCancel}>
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
 }
 
 function AiCard({

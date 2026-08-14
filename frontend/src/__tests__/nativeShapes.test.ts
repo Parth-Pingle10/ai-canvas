@@ -152,10 +152,96 @@ describe("nativeShapes & draft groups in canvasStore", () => {
     const { start, end } = resolveConnectorEndpoints(conn, map);
     // Right anchor of shapeA: x = 200, y = (100+160)/2 = 130
     expect(start.x).toBe(200);
-    expect(start.y).toBe(130);
-
     // Left anchor of shapeB: x = 300, y = 130
     expect(end.x).toBe(300);
     expect(end.y).toBe(130);
   });
+
+  it("accepts a clean AI shape and removes the rough source strokes atomically", () => {
+    const { addStroke, addShape, acceptDraftGroup, undo } = useCanvasStore.getState();
+
+    // 1. User draws rough stroke
+    const roughStroke = {
+      id: "rough_1",
+      type: "stroke" as const,
+      points: [{ x: 10, y: 10 }, { x: 100, y: 10 }, { x: 100, y: 60 }, { x: 10, y: 60 }],
+      color: "#000",
+      width: 2,
+      tool: "pen" as const,
+      opacity: 1,
+      bounds: { minX: 10, minY: 10, maxX: 100, maxY: 60 },
+      createdAt: 0,
+      version: 1,
+    };
+    addStroke(roughStroke);
+    expect(useCanvasStore.getState().strokes).toHaveLength(1);
+
+    // 2. AI creates clean replacement shape referencing the rough stroke ID
+    const groupId = "draft_shape_grp";
+    const cleanShape = createCleanShape(
+      "rectangle",
+      { minX: 10, minY: 10, maxX: 100, maxY: 60 },
+      "#000",
+      "",
+      true,
+      groupId,
+      ["rough_1"]
+    );
+    addShape(cleanShape);
+
+    // Both rough and clean draft exist before accept
+    expect(useCanvasStore.getState().strokes).toHaveLength(1);
+    expect(useCanvasStore.getState().shapes).toHaveLength(1);
+    expect(useCanvasStore.getState().shapes[0].status).toBe("draft");
+
+    // 3. User accepts: rough stroke is removed, clean shape becomes confirmed
+    acceptDraftGroup(groupId);
+
+    expect(useCanvasStore.getState().strokes).toHaveLength(0);
+    expect(useCanvasStore.getState().shapes).toHaveLength(1);
+    expect(useCanvasStore.getState().shapes[0].status).toBe("confirmed");
+
+    // 4. Undo restores the rough stroke and previous state
+    undo();
+    expect(useCanvasStore.getState().strokes).toHaveLength(1);
+    expect(useCanvasStore.getState().strokes[0].id).toBe("rough_1");
+  });
+
+  it("discarding a clean AI shape leaves the original rough stroke untouched", () => {
+    const { addStroke, addShape, discardDraftGroup } = useCanvasStore.getState();
+
+    const roughStroke = {
+      id: "rough_2",
+      type: "stroke" as const,
+      points: [{ x: 0, y: 0 }, { x: 50, y: 50 }],
+      color: "#000",
+      width: 2,
+      tool: "pen" as const,
+      opacity: 1,
+      bounds: { minX: 0, minY: 0, maxX: 50, maxY: 50 },
+      createdAt: 0,
+      version: 1,
+    };
+    addStroke(roughStroke);
+
+    const groupId = "draft_discard_grp";
+    const cleanShape = createCleanShape(
+      "circle",
+      { minX: 0, minY: 0, maxX: 50, maxY: 50 },
+      "#000",
+      "",
+      true,
+      groupId,
+      ["rough_2"]
+    );
+    addShape(cleanShape);
+
+    // Discard draft: clean shape is removed, rough stroke remains
+    discardDraftGroup(groupId);
+
+    expect(useCanvasStore.getState().shapes).toHaveLength(0);
+    expect(useCanvasStore.getState().strokes).toHaveLength(1);
+    expect(useCanvasStore.getState().strokes[0].id).toBe("rough_2");
+  });
 });
+

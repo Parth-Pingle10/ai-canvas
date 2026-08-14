@@ -55,6 +55,18 @@ class ModelTimeoutError(Exception):
 class MultimodalModel(ABC):
     """Abstract interface every model provider implements."""
 
+    @property
+    @abstractmethod
+    def provider_name(self) -> str:
+        """Name of the provider (e.g. 'gemini', 'ollama')."""
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def model_name(self) -> str:
+        """Name of the underlying model (e.g. 'gemini-2.5-flash', 'qwen3-vl:4b')."""
+        raise NotImplementedError
+
     @abstractmethod
     async def analyze(
         self,

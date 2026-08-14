@@ -88,7 +88,9 @@ export function createCleanShape(
   strokeColor = "#1e1e1e",
   label = "",
   isDraft = true,
-  draftGroupId?: string
+  draftGroupId?: string,
+  sourceStrokeIds?: string[],
+  sourceBounds?: BoundingBox
 ): CanvasShape {
   const width = Math.max(40, bounds.maxX - bounds.minX);
   const height = Math.max(40, bounds.maxY - bounds.minY);
@@ -110,6 +112,8 @@ export function createCleanShape(
     bounds: { minX: bounds.minX, minY: bounds.minY, maxX: bounds.minX + width, maxY: bounds.minY + height },
     status: isDraft ? "draft" : "confirmed",
     draftGroupId,
+    sourceStrokeIds,
+    sourceBounds: sourceBounds ?? bounds,
     createdAt: Date.now(),
     version: 1,
   };

@@ -84,6 +84,8 @@ export interface CanvasShape {
   bounds: BoundingBox;
   status?: "confirmed" | "draft";
   draftGroupId?: string;
+  sourceStrokeIds?: string[];
+  sourceBounds?: BoundingBox;
   createdAt: number;
   version: number;
 }
@@ -113,6 +115,8 @@ export interface CanvasConnector {
   bounds: BoundingBox;
   status?: "confirmed" | "draft";
   draftGroupId?: string;
+  sourceStrokeIds?: string[];
+  sourceBounds?: BoundingBox;
   createdAt: number;
   version: number;
 }
@@ -133,6 +137,8 @@ export interface CanvasText {
   bounds: BoundingBox;
   status?: "confirmed" | "draft";
   draftGroupId?: string;
+  sourceStrokeIds?: string[];
+  sourceBounds?: BoundingBox;
   createdAt: number;
   version: number;
 }

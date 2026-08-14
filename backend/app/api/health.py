@@ -28,8 +28,9 @@ async def health(
     status = "ok" if (reachable and model_installed) else "degraded"
     return HealthResponse(
         status=status,
+        provider=provider.provider_name,
         ollama=reachable,
-        model=settings.ollama_model,
+        model=provider.model_name,
         model_installed=model_installed,
     )
 

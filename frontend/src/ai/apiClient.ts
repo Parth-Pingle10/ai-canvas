@@ -103,6 +103,7 @@ export interface AnalyzeRequestPayload {
   strokeCount: number;
   sessionId: string;
   trigger: "idle_pause" | "manual";
+  canvasTexts?: string[];
   tCaptureMs: number;
   tDispatchMs: number;
 }
@@ -153,6 +154,7 @@ export async function analyzeRegion(
       stroke_count: payload.strokeCount,
       format: payload.format,
       session_id: payload.sessionId,
+      canvas_texts: payload.canvasTexts ?? [],
       t_capture_ms: payload.tCaptureMs,
       t_dispatch_ms: payload.tDispatchMs,
     },

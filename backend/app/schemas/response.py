@@ -109,9 +109,10 @@ class AnalyzeErrorResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str  # "ok" | "degraded"
-    ollama: bool
-    model: str
-    model_installed: bool
+    provider: str = "gemini"
+    ollama: bool = True
+    model: str = "gemini-2.5-flash"
+    model_installed: bool = True
 
 
 class SessionMetricsResponse(BaseModel):

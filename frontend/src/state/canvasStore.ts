@@ -226,21 +226,57 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   acceptDraftGroup: (draftGroupId) => {
-    const { shapes, connectors, commitScene } = get();
+    const { shapes, connectors, textObjects, strokes, commitScene } = get();
+
+    // 1. Collect all source stroke IDs associated with this draft group
+    const sourceStrokeIdSet = new Set<string>();
+    for (const s of shapes) {
+      if (s.draftGroupId === draftGroupId && s.sourceStrokeIds) {
+        for (const id of s.sourceStrokeIds) sourceStrokeIdSet.add(id);
+      }
+    }
+    for (const c of connectors) {
+      if (c.draftGroupId === draftGroupId && c.sourceStrokeIds) {
+        for (const id of c.sourceStrokeIds) sourceStrokeIdSet.add(id);
+      }
+    }
+    for (const t of textObjects) {
+      if (t.draftGroupId === draftGroupId && t.sourceStrokeIds) {
+        for (const id of t.sourceStrokeIds) sourceStrokeIdSet.add(id);
+      }
+    }
+
+    // 2. Remove replaced source strokes (only when accepted)
+    const nextStrokes =
+      sourceStrokeIdSet.size > 0
+        ? strokes.filter((s) => !sourceStrokeIdSet.has(s.id))
+        : strokes;
+
+    // 3. Confirm all shapes and connectors in the group
     const nextShapes = shapes.map((s) =>
       s.draftGroupId === draftGroupId ? { ...s, status: "confirmed" as const, version: s.version + 1 } : s
     );
     const nextConnectors = connectors.map((c) =>
       c.draftGroupId === draftGroupId ? { ...c, status: "confirmed" as const, version: c.version + 1 } : c
     );
-    commitScene({ shapes: nextShapes, connectors: nextConnectors });
+    const nextTextObjects = textObjects.map((t) =>
+      t.draftGroupId === draftGroupId ? { ...t, status: "confirmed" as const, version: t.version + 1 } : t
+    );
+
+    commitScene({
+      strokes: nextStrokes,
+      shapes: nextShapes,
+      connectors: nextConnectors,
+      textObjects: nextTextObjects,
+    });
   },
 
   discardDraftGroup: (draftGroupId) => {
-    const { shapes, connectors, commitScene } = get();
+    const { shapes, connectors, textObjects, commitScene } = get();
     commitScene({
       shapes: shapes.filter((s) => s.draftGroupId !== draftGroupId),
       connectors: connectors.filter((c) => c.draftGroupId !== draftGroupId),
+      textObjects: textObjects.filter((t) => t.draftGroupId !== draftGroupId),
     });
   },
 
@@ -277,10 +313,23 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   acceptDraft: (id) => {
-    const { aiObjects, commitAiObjects } = get();
-    commitAiObjects(
-      aiObjects.map((o) => (o.id === id ? { ...o, status: "confirmed" as const, version: o.version + 1 } : o))
+    const { aiObjects, strokes, commitScene } = get();
+    const target = aiObjects.find((o) => o.id === id);
+    const sourceIds = target?.sourceStrokeIds;
+
+    const nextStrokes =
+      sourceIds && sourceIds.length > 0
+        ? strokes.filter((s) => !sourceIds.includes(s.id))
+        : strokes;
+
+    const nextAiObjects = aiObjects.map((o) =>
+      o.id === id ? { ...o, status: "confirmed" as const, version: o.version + 1 } : o
     );
+
+    commitScene({
+      strokes: nextStrokes,
+      aiObjects: nextAiObjects,
+    });
   },
 
   discardDraft: (id) => {

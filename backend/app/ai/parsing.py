@@ -52,6 +52,20 @@ def _normalize_shape_type(val: str | None) -> str:
     return _SHAPE_TYPE_MAP.get(cleaned, "rectangle")
 
 
+def _clean_user_facing_text(text: str) -> str:
+    if not text:
+        return ""
+    # Strip any internal thinking tags
+    cleaned = re.sub(r"<think>[\s\S]*?</think>", "", text)
+    # Strip outer markdown block fence if whole body is enclosed
+    match = re.match(r"^```(?:markdown|latex|text)?\s*\n([\s\S]*?)\n```$", cleaned.strip())
+    if match:
+        cleaned = match.group(1)
+    # Remove internal special token markers
+    cleaned = cleaned.replace("<|im_start|>", "").replace("<|im_end|>", "")
+    return cleaned.strip()
+
+
 def _normalize_data(data: dict) -> dict:
     if not isinstance(data, dict):
         return data
@@ -83,6 +97,8 @@ def _normalize_data(data: dict) -> dict:
     # 3. Title normalization
     if "title" not in normalized or not isinstance(normalized["title"], str):
         normalized["title"] = ""
+    else:
+        normalized["title"] = _clean_user_facing_text(normalized["title"])
 
     # 4. Content normalization
     if "content" not in normalized or normalized["content"] is None:
@@ -91,8 +107,8 @@ def _normalize_data(data: dict) -> dict:
             pass
         else:
             normalized["content"] = ""
-    elif not isinstance(normalized["content"], str):
-        normalized["content"] = str(normalized["content"])
+    else:
+        normalized["content"] = _clean_user_facing_text(str(normalized["content"]))
 
     # 5. Normalize layout_direction
     direction = str(normalized.get("layout_direction") or "").lower().strip().replace("-", "_")

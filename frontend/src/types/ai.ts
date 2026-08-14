@@ -38,6 +38,7 @@ export interface AiObject {
   /** The region-of-interest that produced this object, kept for reference /
    * a future connecting-line visual between source and draft. */
   sourceBounds: BoundingBox;
+  sourceStrokeIds?: string[];
   requestId: string;
   createdAt: number;
   version: number;

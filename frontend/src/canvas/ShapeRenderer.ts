@@ -357,7 +357,8 @@ export function drawCanvasText(
 
   ctx.save();
   ctx.fillStyle = fontColor;
-  ctx.font = `${fontWeight} ${fontSize}px system-ui, -apple-system, sans-serif`;
+  const fontFamily = textObj.fontFamily || '"Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif';
+  ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
   ctx.textAlign = align;
   ctx.textBaseline = "top";
 
@@ -366,7 +367,7 @@ export function drawCanvasText(
   }
 
   const lines = text.split("\n");
-  const lineHeight = fontSize * 1.3;
+  const lineHeight = fontSize * 1.35;
   for (let i = 0; i < lines.length; i++) {
     ctx.fillText(lines[i], x, y + i * lineHeight);
   }
@@ -404,10 +405,15 @@ export function boundsOfConnector(
 }
 
 export function boundsOfText(textObj: CanvasText): BoundingBox {
+  const lines = (textObj.text || "").split("\n");
+  const maxLineLen = Math.max(...lines.map((l) => l.length), 1);
+  const fontSize = textObj.fontSize || 16;
+  const width = Math.max(textObj.width || 0, maxLineLen * fontSize * 0.65 + 16);
+  const height = Math.max(textObj.height || 0, lines.length * fontSize * 1.35 + 8);
   return {
     minX: textObj.x,
     minY: textObj.y,
-    maxX: textObj.x + textObj.width,
-    maxY: textObj.y + textObj.height,
+    maxX: textObj.x + width,
+    maxY: textObj.y + height,
   };
 }

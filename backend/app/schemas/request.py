@@ -38,6 +38,7 @@ class AnalyzeContext(BaseModel):
     stroke_count: int = Field(ge=0)
     format: ImageFormat = ImageFormat.webp
     session_id: str = Field(min_length=1, max_length=128)
+    canvas_texts: list[str] = Field(default_factory=list)
     # Client-measured timing marks, forwarded so the backend's trace can
     # report an accurate end-to-end figure without re-deriving t_capture.
     t_capture_ms: float | None = Field(default=None, ge=0)

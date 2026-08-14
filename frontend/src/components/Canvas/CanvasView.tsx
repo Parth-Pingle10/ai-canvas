@@ -119,9 +119,74 @@ export function CanvasView() {
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
 
+  const [inlineTextEditor, setInlineTextEditor] = useState<{
+    worldX: number;
+    worldY: number;
+    initialText: string;
+    fontSize: number;
+    color: string;
+    existingId?: string;
+  } | null>(null);
+
   const scheduleRender = useCallback(() => {
     schedulerRef.current?.request();
   }, []);
+
+  const commitInlineText = useCallback(
+    (text: string) => {
+      if (!inlineTextEditor) return;
+      const trimmed = text.trim();
+      if (trimmed) {
+        if (inlineTextEditor.existingId) {
+          const currentTexts = textObjectsRef.current;
+          const nextTexts = currentTexts.map((t) => {
+            if (t.id === inlineTextEditor.existingId) {
+              const updated: CanvasText = {
+                ...t,
+                text: trimmed,
+                fontSize: inlineTextEditor.fontSize,
+                fontColor: inlineTextEditor.color,
+                version: t.version + 1,
+              };
+              updated.bounds = boundsOfText(updated);
+              return updated;
+            }
+            return t;
+          });
+          commitScene({ textObjects: nextTexts });
+        } else {
+          const textObj: CanvasText = {
+            id: generateId("text"),
+            type: "text",
+            x: inlineTextEditor.worldX,
+            y: inlineTextEditor.worldY,
+            width: 120,
+            height: 30,
+            text: trimmed,
+            fontSize: inlineTextEditor.fontSize,
+            fontColor: inlineTextEditor.color,
+            bounds: {
+              minX: inlineTextEditor.worldX,
+              minY: inlineTextEditor.worldY,
+              maxX: inlineTextEditor.worldX + 120,
+              maxY: inlineTextEditor.worldY + 30,
+            },
+            status: "confirmed",
+            createdAt: Date.now(),
+            version: 1,
+          };
+          textObj.bounds = boundsOfText(textObj);
+          addTextObject(textObj);
+        }
+      } else if (inlineTextEditor.existingId) {
+        const currentTexts = textObjectsRef.current;
+        commitScene({ textObjects: currentTexts.filter((t) => t.id !== inlineTextEditor.existingId) });
+      }
+      setInlineTextEditor(null);
+      scheduleRender();
+    },
+    [inlineTextEditor, addTextObject, commitScene, scheduleRender]
+  );
 
   const draw = useCallback(() => {
     const renderer = rendererRef.current;
@@ -484,26 +549,13 @@ export function CanvasView() {
 
       if (currentTool === "text") {
         const settings = toolSettingsRef.current.text;
-        const text = window.prompt("Enter text for canvas:");
-        if (text) {
-          const textObj: CanvasText = {
-            id: generateId("text"),
-            type: "text",
-            x: world.x,
-            y: world.y,
-            width: Math.max(100, text.length * 10),
-            height: 30,
-            text,
-            fontSize: settings.width || 16,
-            fontColor: settings.color,
-            bounds: { minX: world.x, minY: world.y, maxX: world.x + 150, maxY: world.y + 30 },
-            status: "confirmed",
-            createdAt: Date.now(),
-            version: 1,
-          };
-          textObj.bounds = boundsOfText(textObj);
-          addTextObject(textObj);
-        }
+        setInlineTextEditor({
+          worldX: world.x,
+          worldY: world.y,
+          initialText: "",
+          fontSize: settings.width || 18,
+          color: settings.color || "#1e1e1e",
+        });
         return;
       }
 
@@ -937,6 +989,47 @@ export function CanvasView() {
         {visibleStats.visible}/{totalObjCount} objects visible · zoom{" "}
         {(camera.zoom * 100).toFixed(0)}%
       </div>
+      {inlineTextEditor && (() => {
+        const rect = containerRef.current?.getBoundingClientRect();
+        const vw = rect?.width || window.innerWidth;
+        const vh = rect?.height || window.innerHeight;
+        const screen = worldToScreen(
+          { x: inlineTextEditor.worldX, y: inlineTextEditor.worldY },
+          camera,
+          vw,
+          vh
+        );
+        return (
+          <textarea
+            autoFocus
+            className="canvas-inline-text-editor"
+            style={{
+              position: "absolute",
+              left: screen.x,
+              top: screen.y,
+              fontSize: `${Math.max(12, inlineTextEditor.fontSize * camera.zoom)}px`,
+              color: inlineTextEditor.color,
+              fontFamily: '"Trebuchet MS", "Segoe UI", system-ui, sans-serif',
+              lineHeight: 1.35,
+              minWidth: `${Math.max(160, 160 * camera.zoom)}px`,
+              minHeight: `${Math.max(40, 40 * camera.zoom)}px`,
+            }}
+            defaultValue={inlineTextEditor.initialText}
+            placeholder="Type canvas text or AI prompt..."
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                commitInlineText(e.currentTarget.value);
+              } else if (e.key === "Escape") {
+                setInlineTextEditor(null);
+              }
+            }}
+            onBlur={(e) => {
+              commitInlineText(e.currentTarget.value);
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -1,15 +1,14 @@
-import type { BoundingBox, Stroke } from "../types/document";
+import type { BoundingBox, CanvasConnector, CanvasShape, CanvasText, Stroke } from "../types/document";
 import { boundsIntersect, boundsWidth, boundsHeight, expandBounds, unionBounds } from "./CoordinateSystem";
 import { drawStroke } from "./StrokeRenderer";
+import { drawCanvasText, drawConnector, drawShape } from "./ShapeRenderer";
 
 /**
- * RegionExtractor — future AI compatibility layer.
+ * RegionExtractor — AI vision and context extraction layer.
  *
- * This module does NOT call any model. It only crops and rasterizes a region
- * of the structured document to a standalone canvas/blob, and reports the
- * geometry alongside it. A future backend integration sends this payload
- * (image + bounds + zoom + nearby strokes) to a multimodal model; nothing in
- * this file needs to change when that integration is added.
+ * Crops and rasterizes a region of the structured whiteboard document (strokes,
+ * native shapes, connectors, and typed text objects) to a standalone canvas/blob,
+ * extracting both visual pixel content and semantic canvas text objects.
  */
 
 export interface ExtractRegionOptions {
@@ -22,11 +21,7 @@ export interface ExtractRegionOptions {
   background?: string;
   /** Device pixel ratio to render at, for crisper output. */
   pixelRatio?: number;
-  /** Output image format. "webp" is preferred for AI requests (smaller
-   *  payload at comparable visual quality, which matters for the latency/
-   *  cost measurements the AI integration instruments); "png" remains the
-   *  default for lossless use (e.g. a future non-AI export path reusing
-   *  this function). */
+  /** Output image format. */
   format?: "png" | "webp";
   /** Encoder quality for lossy formats (0–1). Ignored for png. */
   quality?: number;
@@ -44,6 +39,7 @@ export interface ExtractedRegion {
   zoom: number;
   strokeCount: number;
   objectTypes: string[];
+  canvasTexts: string[];
 }
 
 const DEFAULT_MARGIN = 48;
@@ -51,13 +47,16 @@ const DEFAULT_RESOLUTION = 1024;
 
 /**
  * Extract and rasterize a world-space region of the document, along with
- * lightweight metadata about what's in it. Strokes are queried against the
- * expanded bounds so context just outside the literal selection is still
- * captured (a stroke that clips the edge of a selection is still relevant).
+ * structured text and lightweight metadata about what's in it.
  */
 export async function extractRegion(
   strokes: Stroke[],
-  options: ExtractRegionOptions
+  options: ExtractRegionOptions,
+  extra?: {
+    shapes?: CanvasShape[];
+    connectors?: CanvasConnector[];
+    textObjects?: CanvasText[];
+  }
 ): Promise<ExtractedRegion> {
   const margin = options.margin ?? DEFAULT_MARGIN;
   const resolution = options.resolution ?? DEFAULT_RESOLUTION;
@@ -65,6 +64,10 @@ export async function extractRegion(
   const pixelRatio = options.pixelRatio ?? 1;
   const format = options.format ?? "png";
   const mimeType = format === "webp" ? "image/webp" : "image/png";
+
+  const shapes = extra?.shapes ?? [];
+  const connectors = extra?.connectors ?? [];
+  const textObjects = extra?.textObjects ?? [];
 
   const expanded = expandBounds(options.bounds, margin);
   const worldW = Math.max(1, boundsWidth(expanded));
@@ -74,7 +77,10 @@ export async function extractRegion(
   const outW = Math.max(1, Math.round(worldW * scale * pixelRatio));
   const outH = Math.max(1, Math.round(worldH * scale * pixelRatio));
 
-  const relevant = strokes.filter((s) => boundsIntersect(s.bounds, expanded));
+  const relevantStrokes = strokes.filter((s) => boundsIntersect(s.bounds, expanded));
+  const relevantShapes = shapes.filter((s) => boundsIntersect(s.bounds, expanded));
+  const relevantConnectors = connectors.filter((c) => boundsIntersect(c.bounds, expanded));
+  const relevantTexts = textObjects.filter((t) => boundsIntersect(t.bounds, expanded));
 
   const canvas = document.createElement("canvas");
   canvas.width = outW;
@@ -92,14 +98,36 @@ export async function extractRegion(
       -expanded.minX * scale * pixelRatio,
       -expanded.minY * scale * pixelRatio
     );
-    for (const stroke of relevant) {
+
+    // Draw full scene layers in order: shapes -> connectors -> strokes -> text
+    for (const shape of relevantShapes) {
+      drawShape(ctx, shape);
+    }
+    for (const connector of relevantConnectors) {
+      drawConnector(ctx, connector);
+    }
+    for (const stroke of relevantStrokes) {
       drawStroke(ctx, stroke);
+    }
+    for (const textObj of relevantTexts) {
+      drawCanvasText(ctx, textObj);
     }
   }
 
   const imageBlob = ctx ? await canvasToBlob(canvas, mimeType, options.quality) : null;
 
-  const objectTypes = Array.from(new Set(relevant.map((s) => s.tool)));
+  const objectTypes = Array.from(
+    new Set([
+      ...relevantStrokes.map((s) => s.tool),
+      ...relevantShapes.map((s) => `shape:${s.shapeType}`),
+      ...relevantConnectors.map(() => "connector"),
+      ...relevantTexts.map(() => "text"),
+    ])
+  );
+
+  const canvasTexts = relevantTexts
+    .map((t) => t.text)
+    .filter((txt) => Boolean(txt && txt.trim().length > 0));
 
   return {
     imageBlob,
@@ -108,8 +136,9 @@ export async function extractRegion(
     width: outW,
     height: outH,
     zoom: scale * pixelRatio,
-    strokeCount: relevant.length,
+    strokeCount: relevantStrokes.length,
     objectTypes,
+    canvasTexts,
   };
 }
 
@@ -124,74 +153,131 @@ function canvasToBlob(
 }
 
 /**
- * Region-of-interest strategy (see docs/AI_INTEGRATION.md for the full
- * writeup). Tried in order, first match wins:
- *
- *   1. recent-strokes — bounding box of strokes drawn/edited since the last
- *      AI dispatch (the strongest signal of "what the user is working on").
- *   2. selection — if nothing was recently drawn but something is selected,
- *      use that.
- *   3. viewport — fallback: whatever is currently visible on screen.
- *
- * Kept here (not in the trigger hook) so the strategy itself stays a pure,
- * directly-testable function independent of timers/network/React.
+ * Region-of-interest strategy:
+ * Evaluates active strokes, text objects, and shapes to determine what the user is working on.
  */
 export function computeRoi(params: {
   strokes: Stroke[];
+  shapes?: CanvasShape[];
+  connectors?: CanvasConnector[];
+  textObjects?: CanvasText[];
   recentStrokeIds: Set<string>;
+  recentTextIds?: Set<string>;
+  recentShapeIds?: Set<string>;
   selectedIds: string[];
   viewportWorldBounds: BoundingBox;
-}): { bounds: BoundingBox; source: "recent-strokes" | "selection" | "viewport"; strokeIds: string[] } {
-  const { strokes, recentStrokeIds, selectedIds, viewportWorldBounds } = params;
-
-  if (recentStrokeIds.size > 0) {
-    const recent = strokes.filter((s) => recentStrokeIds.has(s.id));
-    if (recent.length > 0) {
-      return {
-        bounds: recent.reduce<BoundingBox>((acc, s) => unionBounds(acc, s.bounds), recent[0].bounds),
-        source: "recent-strokes",
-        strokeIds: recent.map((s) => s.id),
-      };
-    }
-  }
-
-  if (selectedIds.length > 0) {
-    const selected = strokes.filter((s) => selectedIds.includes(s.id));
-    if (selected.length > 0) {
-      return {
-        bounds: selected.reduce<BoundingBox>((acc, s) => unionBounds(acc, s.bounds), selected[0].bounds),
-        source: "selection",
-        strokeIds: selected.map((s) => s.id),
-      };
-    }
-  }
-
-  return { bounds: viewportWorldBounds, source: "viewport", strokeIds: [] };
-}
-
-/**
- * Deterministic signature of a computed ROI, used for request de-duplication
- * (see docs/AI_INTEGRATION.md "Avoiding duplicate requests"). Two ROI
- * computations that touch the same strokes at the same versions — or the
- * same fallback source with no strokes at all — produce the same signature,
- * regardless of object insertion order.
- */
-export function roiSignature(roi: {
+}): {
+  bounds: BoundingBox;
   source: "recent-strokes" | "selection" | "viewport";
   strokeIds: string[];
-}, strokes: Stroke[]): string {
-  const versioned = roi.strokeIds
-    .map((id) => {
-      const s = strokes.find((st) => st.id === id);
-      return `${id}@${s?.version ?? 0}`;
-    })
-    .sort();
-  return `${roi.source}:${versioned.join(",")}`;
+  textIds: string[];
+  shapeIds: string[];
+} {
+  const {
+    strokes,
+    shapes = [],
+    textObjects = [],
+    recentStrokeIds,
+    recentTextIds = new Set(),
+    recentShapeIds = new Set(),
+    selectedIds,
+    viewportWorldBounds,
+  } = params;
+
+  // 1. Check recent activity
+  const recentStrokes = strokes.filter((s) => recentStrokeIds.has(s.id));
+  const recentTexts = textObjects.filter((t) => recentTextIds.has(t.id));
+  const recentShapes = shapes.filter((s) => recentShapeIds.has(s.id));
+
+  const allRecentBounds: BoundingBox[] = [
+    ...recentStrokes.map((s) => s.bounds),
+    ...recentTexts.map((t) => t.bounds),
+    ...recentShapes.map((s) => s.bounds),
+  ];
+
+  if (allRecentBounds.length > 0) {
+    return {
+      bounds: allRecentBounds.reduce<BoundingBox>((acc, b) => unionBounds(acc, b), allRecentBounds[0]),
+      source: "recent-strokes",
+      strokeIds: recentStrokes.map((s) => s.id),
+      textIds: recentTexts.map((t) => t.id),
+      shapeIds: recentShapes.map((s) => s.id),
+    };
+  }
+
+  // 2. Check selection
+  if (selectedIds.length > 0) {
+    const selStrokes = strokes.filter((s) => selectedIds.includes(s.id));
+    const selTexts = textObjects.filter((t) => selectedIds.includes(t.id));
+    const selShapes = shapes.filter((s) => selectedIds.includes(s.id));
+
+    const allSelBounds: BoundingBox[] = [
+      ...selStrokes.map((s) => s.bounds),
+      ...selTexts.map((t) => t.bounds),
+      ...selShapes.map((s) => s.bounds),
+    ];
+
+    if (allSelBounds.length > 0) {
+      return {
+        bounds: allSelBounds.reduce<BoundingBox>((acc, b) => unionBounds(acc, b), allSelBounds[0]),
+        source: "selection",
+        strokeIds: selStrokes.map((s) => s.id),
+        textIds: selTexts.map((t) => t.id),
+        shapeIds: selShapes.map((s) => s.id),
+      };
+    }
+  }
+
+  // 3. Fallback to viewport
+  return {
+    bounds: viewportWorldBounds,
+    source: "viewport",
+    strokeIds: [],
+    textIds: [],
+    shapeIds: [],
+  };
 }
 
 /**
- * Convenience helper: strokes near a "recent activity" point, useful as a
- * default region-of-interest strategy (recent-ink bounding box).
+ * Deterministic signature of a computed ROI, used for request de-duplication.
+ */
+export function roiSignature(
+  roi: {
+    source: "recent-strokes" | "selection" | "viewport";
+    strokeIds: string[];
+    textIds?: string[];
+    shapeIds?: string[];
+  },
+  strokes: Stroke[],
+  textObjects: CanvasText[] = [],
+  shapes: CanvasShape[] = []
+): string {
+  const versionedStrokes = roi.strokeIds
+    .map((id) => {
+      const s = strokes.find((st) => st.id === id);
+      return `s:${id}@${s?.version ?? 0}`;
+    })
+    .sort();
+
+  const versionedTexts = (roi.textIds ?? [])
+    .map((id) => {
+      const t = textObjects.find((txt) => txt.id === id);
+      return `t:${id}@${t?.version ?? 0}`;
+    })
+    .sort();
+
+  const versionedShapes = (roi.shapeIds ?? [])
+    .map((id) => {
+      const sh = shapes.find((shp) => shp.id === id);
+      return `sh:${id}@${sh?.version ?? 0}`;
+    })
+    .sort();
+
+  return `${roi.source}:${[...versionedStrokes, ...versionedTexts, ...versionedShapes].join(",")}`;
+}
+
+/**
+ * Convenience helper: strokes near a "recent activity" point.
  */
 export function findNearbyStrokes(
   strokes: Stroke[],
