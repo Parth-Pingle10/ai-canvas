@@ -70,3 +70,30 @@ export function calculateFocusCamera(
     zoom: fitZoom,
   };
 }
+
+/**
+ * Checks whether the given target bounds are already fully and comfortably visible
+ * in the current camera viewport without requiring any zoom/pan jumps.
+ */
+export function isBoundsComfortablyVisible(
+  bounds: BoundingBox,
+  camera: Camera,
+  viewportWidth: number,
+  viewportHeight: number,
+  marginFraction = 0.08
+): boolean {
+  const marginW = viewportWidth * marginFraction;
+  const marginH = viewportHeight * marginFraction;
+
+  const left = camera.x - (viewportWidth / 2 - marginW) / camera.zoom;
+  const right = camera.x + (viewportWidth / 2 - marginW) / camera.zoom;
+  const top = camera.y - (viewportHeight / 2 - marginH) / camera.zoom;
+  const bottom = camera.y + (viewportHeight / 2 - marginH) / camera.zoom;
+
+  return (
+    bounds.minX >= left &&
+    bounds.maxX <= right &&
+    bounds.minY >= top &&
+    bounds.maxY <= bottom
+  );
+}

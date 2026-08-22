@@ -20,9 +20,10 @@ export function AiObjectLayer() {
   const aiObjects = useCanvasStore((s) => s.aiObjects);
   const shapes = useCanvasStore((s) => s.shapes);
   const connectors = useCanvasStore((s) => s.connectors);
+  const textObjects = useCanvasStore((s) => s.textObjects);
   const pendingRequests = useCanvasStore((s) => s.pendingRequests);
 
-  // Group active draft shapes & connectors by draftGroupId
+  // Group active draft shapes, connectors, & native text by draftGroupId
   const draftGroups = new Map<string, { bounds: WorldRect; title: string }>();
   for (const s of shapes) {
     if (s.status === "draft" && s.draftGroupId) {
@@ -41,6 +42,28 @@ export function AiObjectLayer() {
         draftGroups.set(s.draftGroupId, {
           bounds: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
           title: "AI Diagram",
+        });
+      }
+    }
+  }
+
+  for (const t of textObjects) {
+    if (t.status === "draft" && t.draftGroupId) {
+      const g = draftGroups.get(t.draftGroupId);
+      const tb = t.bounds;
+      if (!g) {
+        draftGroups.set(t.draftGroupId, {
+          bounds: { x: tb.minX, y: tb.minY, width: tb.maxX - tb.minX, height: tb.maxY - tb.minY },
+          title: "AI Answer",
+        });
+      } else {
+        const minX = Math.min(g.bounds.x, tb.minX);
+        const minY = Math.min(g.bounds.y, tb.minY);
+        const maxX = Math.max(g.bounds.x + g.bounds.width, tb.maxX);
+        const maxY = Math.max(g.bounds.y + g.bounds.height, tb.maxY);
+        draftGroups.set(t.draftGroupId, {
+          bounds: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
+          title: "AI Answer",
         });
       }
     }

@@ -2,14 +2,15 @@ import { useCallback, useEffect, useRef } from "react";
 import { useCanvasStore } from "../state/canvasStore";
 import { useMetricsStore } from "../state/metricsStore";
 import { computeRoi, extractRegion, roiSignature } from "../canvas/RegionExtractor";
-import { viewportWorldBounds } from "../canvas/CoordinateSystem";
+import { unionBounds, viewportWorldBounds } from "../canvas/CoordinateSystem";
 import { generateId } from "../utils/id";
 import { analyzeRegion, reportOutcome, AnalyzeApiError } from "./apiClient";
 import type { AiObject, WorldRect } from "../types/ai";
 import type { BoundingBox, CanvasShape, CanvasText, Stroke } from "../types/document";
 import { layoutDiagram } from "../canvas/LayoutEngine";
 import { createCleanShape } from "../utils/shapeRecognition";
-import { calculateFocusCamera } from "../canvas/Camera";
+import { calculateFocusCamera, isBoundsComfortablyVisible } from "../canvas/Camera";
+import { placeAnswerRelativeToQuestion } from "../canvas/AnswerPlacement";
 
 const IDLE_DELAY_MS = Number(import.meta.env.VITE_AI_IDLE_DELAY_MS ?? 700);
 const ROI_MARGIN = Number(import.meta.env.VITE_AI_ROI_MARGIN ?? 100);
@@ -67,7 +68,9 @@ export function useAiTrigger() {
     if (prevTextsRef.current !== textObjects) {
       const prevVersions = new Map(prevTextsRef.current.map((t) => [t.id, t.version]));
       for (const t of textObjects) {
-        if (prevVersions.get(t.id) !== t.version) dirtyTextIdsRef.current.add(t.id);
+        if (!t.draftGroupId && t.status !== "draft" && prevVersions.get(t.id) !== t.version) {
+          dirtyTextIdsRef.current.add(t.id);
+        }
       }
       prevTextsRef.current = textObjects;
     }
@@ -75,7 +78,9 @@ export function useAiTrigger() {
     if (prevShapesRef.current !== shapes) {
       const prevVersions = new Map(prevShapesRef.current.map((sh) => [sh.id, sh.version]));
       for (const sh of shapes) {
-        if (prevVersions.get(sh.id) !== sh.version) dirtyShapeIdsRef.current.add(sh.id);
+        if (!sh.draftGroupId && sh.status !== "draft" && prevVersions.get(sh.id) !== sh.version) {
+          dirtyShapeIdsRef.current.add(sh.id);
+        }
       }
       prevShapesRef.current = shapes;
     }
@@ -248,12 +253,13 @@ export function useAiTrigger() {
         );
         generatedBounds = cleanShape.bounds;
         useCanvasStore.getState().addShape(cleanShape);
-      } else {
+      } else if (draftType === "latex" && response.draft.content?.includes("$")) {
+        // Mathematical LaTeX derivation
         const draft: AiObject = {
           id: generateId("ai"),
           kind: "ai-object",
           status: "draft",
-          contentType: response.draft.type === "latex" ? "latex" : "markdown",
+          contentType: "latex",
           title: response.draft.title,
           content: response.draft.content,
           confidence: response.draft.confidence,
@@ -271,19 +277,54 @@ export function useAiTrigger() {
           maxY: anchorBounds.y + anchorBounds.height,
         };
         addDraft(draft);
+      } else {
+        // Normal question answer / note / explanation -> Native CanvasText placed intelligently
+        const draftGroupId = generateId("draft_grp");
+        const sourceText = region.canvasTexts.join(" ");
+        const answerRaw = response.draft.content || response.draft.title || "";
+
+        const placed = placeAnswerRelativeToQuestion({
+          answerText: answerRaw,
+          sourceBounds: roi.bounds,
+          sourceText,
+          sourceStrokeIds: roi.strokeIds,
+          cameraZoom: state.camera.zoom,
+          viewportWidth: state.viewportSize.width || window.innerWidth,
+          viewportHeight: state.viewportSize.height || window.innerHeight,
+          existingStrokes: state.strokes,
+          existingShapes: state.shapes,
+          existingConnectors: state.connectors,
+          existingTexts: state.textObjects,
+          draftGroupId,
+        });
+
+        generatedBounds = placed.bounds;
+        useCanvasStore.getState().addTextObject(placed.textObject);
       }
 
-      // Automatically bring the AI result into comfortable view, respecting current zoom
+      // Context-preserving camera focus: only adjust if source + result are not already comfortably visible
       const currentStore = useCanvasStore.getState();
       const viewportWidth = window.innerWidth || 1200;
       const viewportHeight = window.innerHeight || 800;
-      const focusedCamera = calculateFocusCamera(generatedBounds, {
+      const combinedBounds = unionBounds(roi.bounds, generatedBounds);
+
+      const alreadyVisible = isBoundsComfortablyVisible(
+        combinedBounds,
+        currentStore.camera,
         viewportWidth,
         viewportHeight,
-        currentCamera: currentStore.camera,
-        sourceBounds: roi.bounds,
-      });
-      currentStore.setCamera(focusedCamera);
+        0.08
+      );
+
+      if (!alreadyVisible) {
+        const focusedCamera = calculateFocusCamera(combinedBounds, {
+          viewportWidth,
+          viewportHeight,
+          currentCamera: currentStore.camera,
+          sourceBounds: roi.bounds,
+        });
+        currentStore.setCamera(focusedCamera);
+      }
     } catch (err) {
       if (inFlightRef.current?.requestId === requestId) inFlightRef.current = null;
       removePendingRequest(requestId);

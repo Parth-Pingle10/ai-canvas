@@ -78,9 +78,15 @@ export async function extractRegion(
   const outH = Math.max(1, Math.round(worldH * scale * pixelRatio));
 
   const relevantStrokes = strokes.filter((s) => boundsIntersect(s.bounds, expanded));
-  const relevantShapes = shapes.filter((s) => boundsIntersect(s.bounds, expanded));
-  const relevantConnectors = connectors.filter((c) => boundsIntersect(c.bounds, expanded));
-  const relevantTexts = textObjects.filter((t) => boundsIntersect(t.bounds, expanded));
+  const relevantShapes = shapes.filter(
+    (s) => boundsIntersect(s.bounds, expanded) && (!s.draftGroupId || s.status === "confirmed")
+  );
+  const relevantConnectors = connectors.filter(
+    (c) => boundsIntersect(c.bounds, expanded) && (!c.draftGroupId || c.status === "confirmed")
+  );
+  const relevantTexts = textObjects.filter(
+    (t) => boundsIntersect(t.bounds, expanded) && (!t.draftGroupId || t.status === "confirmed")
+  );
 
   const canvas = document.createElement("canvas");
   canvas.width = outW;
