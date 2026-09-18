@@ -1,29 +1,29 @@
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
+  Check,
+  ChevronDown,
   Circle,
   Diamond,
-  Download,
   Eraser,
-  FolderOpen,
+  Flame,
+  Grid,
   Hand,
   Highlighter,
-  Keyboard,
+  Minus,
+  MoreVertical,
   MousePointer2,
   Pencil,
   PenLine,
-  Redo2,
-  Save,
+  Shapes,
   Sparkles,
   Square,
-  Trash2,
   Triangle,
   Type,
-  Undo2,
+  Wand2,
 } from "lucide-react";
 import { useCanvasStore } from "../../state/canvasStore";
 import type { ToolId } from "../../types/document";
-import { ColorPicker } from "../ColorPicker/ColorPicker";
-import { BrushControls } from "../BrushControls/BrushControls";
 import "./Toolbar.css";
 
 const DRAW_TOOLS: { id: ToolId; label: string; icon: typeof PenLine; shortcut: string }[] = [
@@ -35,204 +35,269 @@ const DRAW_TOOLS: { id: ToolId; label: string; icon: typeof PenLine; shortcut: s
   { id: "hand", label: "Hand", icon: Hand, shortcut: "Space" },
 ];
 
-const SHAPE_TOOLS: { id: ToolId; label: string; icon: typeof PenLine; shortcut: string }[] = [
+export const SHAPE_OPTIONS: { id: ToolId; label: string; icon: typeof Square; shortcut: string }[] = [
   { id: "rectangle", label: "Rectangle", icon: Square, shortcut: "R" },
   { id: "circle", label: "Circle", icon: Circle, shortcut: "O" },
   { id: "triangle", label: "Triangle", icon: Triangle, shortcut: "T" },
   { id: "diamond", label: "Diamond", icon: Diamond, shortcut: "D" },
   { id: "arrow", label: "Arrow", icon: ArrowUpRight, shortcut: "A" },
-  { id: "text", label: "Text", icon: Type, shortcut: "X" },
+  { id: "line", label: "Line", icon: Minus, shortcut: "L" },
 ];
 
+export const SHAPE_TOOL_IDS: ToolId[] = ["rectangle", "circle", "triangle", "diamond", "arrow", "line"];
+
 interface ToolbarProps {
-  onSave: () => void;
-  onLoad: () => void;
-  onExport: () => void;
-  onClear: () => void;
-  onToggleHelp: () => void;
   onManualAnalyze: () => void;
+  isShapePaletteOpen?: boolean;
+  onToggleShapePalette?: () => void;
 }
 
 export function Toolbar({
-  onSave,
-  onLoad,
-  onExport,
-  onClear,
-  onToggleHelp,
   onManualAnalyze,
 }: ToolbarProps) {
   const tool = useCanvasStore((s) => s.tool);
   const setTool = useCanvasStore((s) => s.setTool);
-  const toolSettings = useCanvasStore((s) => s.toolSettings);
-  const setToolSetting = useCanvasStore((s) => s.setToolSetting);
-  const undo = useCanvasStore((s) => s.undo);
-  const redo = useCanvasStore((s) => s.redo);
-  const history = useCanvasStore((s) => s.history);
   const selectedIds = useCanvasStore((s) => s.selectedIds);
-  const deleteSelection = useCanvasStore((s) => s.deleteSelection);
+  const pendingRequests = useCanvasStore((s) => s.pendingRequests);
+  const showGrid = useCanvasStore((s) => s.showGrid);
+  const toggleGrid = useCanvasStore((s) => s.toggleGrid);
+  const drawToShapeEnabled = useCanvasStore((s) => s.drawToShapeEnabled);
+  const toggleDrawToShape = useCanvasStore((s) => s.toggleDrawToShape);
 
-  const canUndo = history.past.length > 0;
-  const canRedo = history.future.length > 0;
-  const showColorAndSize = tool !== "select" && tool !== "hand" && tool !== "eraser";
-  const showEraserSize = tool === "eraser";
-  const activeSettings = toolSettings[tool];
-  const isShapeTool = SHAPE_TOOLS.some((t) => t.id === tool);
+  const [shapesDropdownOpen, setShapesDropdownOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  const isAnalyzing = pendingRequests.length > 0;
+  const activeShape = SHAPE_OPTIONS.find((s) => s.id === tool);
+  const isShapeActive = Boolean(activeShape);
+
+  // Close dropdowns on outside click or Escape
+  useEffect(() => {
+    if (!shapesDropdownOpen && !moreMenuOpen) return;
+
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
+        setShapesDropdownOpen(false);
+      }
+      if (moreMenuRef.current && !moreMenuRef.current.contains(target)) {
+        setMoreMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShapesDropdownOpen(false);
+        setMoreMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [shapesDropdownOpen, moreMenuOpen]);
+
+  // Active shape icon for the top bar
+  const ShapeIcon = activeShape ? activeShape.icon : Shapes;
 
   return (
-    <div className="toolbar" role="toolbar" aria-label="Canvas tools">
-      <div className="toolbar__group">
-        {DRAW_TOOLS.map(({ id, label, icon: Icon, shortcut }) => (
+    <div className="toolbar" role="toolbar" aria-label="Canvas workspace tools">
+      {/* 1. LEFT SECTION: Drawing Tools */}
+      <div className="toolbar__section toolbar__section--tools">
+        <div className="toolbar__group">
+          {DRAW_TOOLS.map(({ id, label, icon: Icon, shortcut }) => (
+            <button
+              key={id}
+              type="button"
+              className={`toolbar__button${tool === id ? " toolbar__button--active" : ""}`}
+              onClick={() => setTool(id)}
+              title={`${label} (${shortcut})`}
+              aria-pressed={tool === id}
+              aria-label={label}
+            >
+              <Icon size={17} strokeWidth={2} />
+            </button>
+          ))}
+        </div>
+
+        <div className="toolbar__divider" />
+
+        {/* 2. SHAPES IN TOP BAR (Dropdown menu anchored to the button) */}
+        <div className="toolbar__group toolbar__shapes-wrapper" ref={dropdownRef}>
           <button
-            key={id}
             type="button"
-            className={`toolbar__button${tool === id ? " toolbar__button--active" : ""}`}
-            onClick={() => setTool(id)}
-            title={`${label} (${shortcut})`}
-            aria-pressed={tool === id}
-            aria-label={label}
+            className={`toolbar__button toolbar__button--shapes${
+              isShapeActive ? " toolbar__button--active toolbar__button--shape-active" : ""
+            }${shapesDropdownOpen ? " toolbar__button--dropdown-open" : ""}`}
+            onClick={() => {
+              setShapesDropdownOpen((prev) => !prev);
+              setMoreMenuOpen(false);
+            }}
+            title={activeShape ? `Shape: ${activeShape.label}` : "Shapes"}
+            aria-pressed={isShapeActive || shapesDropdownOpen}
+            aria-expanded={shapesDropdownOpen}
+            aria-label="Shapes"
           >
-            <Icon size={18} strokeWidth={2} />
+            <ShapeIcon size={17} strokeWidth={2} />
+            <ChevronDown size={11} className={`toolbar__chevron${shapesDropdownOpen ? " toolbar__chevron--open" : ""}`} />
           </button>
-        ))}
-      </div>
 
-      <div className="toolbar__divider" />
+          {shapesDropdownOpen && (
+            <div className="toolbar__shapes-dropdown" role="menu" aria-label="Shapes Menu">
+              <div className="toolbar__shapes-grid">
+                {SHAPE_OPTIONS.map(({ id, label, icon: Icon, shortcut }) => {
+                  const isSelected = tool === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      role="menuitem"
+                      className={`toolbar__shape-option${isSelected ? " toolbar__shape-option--active" : ""}`}
+                      onClick={() => {
+                        setTool(id);
+                        setShapesDropdownOpen(false);
+                      }}
+                      title={`${label} (${shortcut})`}
+                      aria-label={label}
+                      aria-pressed={isSelected}
+                    >
+                      <Icon size={16} strokeWidth={2} />
+                      <span className="toolbar__shape-option-label">{label}</span>
+                      <kbd className="toolbar__shape-option-shortcut">{shortcut}</kbd>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
-      <div className="toolbar__group">
-        {SHAPE_TOOLS.map(({ id, label, icon: Icon, shortcut }) => (
           <button
-            key={id}
             type="button"
-            className={`toolbar__button${tool === id ? " toolbar__button--active" : ""}${isShapeTool && tool === id ? " toolbar__button--shape-active" : ""}`}
-            onClick={() => setTool(id)}
-            title={`${label} (${shortcut})`}
-            aria-pressed={tool === id}
-            aria-label={label}
+            className={`toolbar__button${tool === "text" ? " toolbar__button--active" : ""}`}
+            onClick={() => setTool("text")}
+            title="Text (X)"
+            aria-pressed={tool === "text"}
+            aria-label="Text"
           >
-            <Icon size={18} strokeWidth={2} />
+            <Type size={17} strokeWidth={2} />
           </button>
-        ))}
+        </div>
+
+        {tool === "select" && selectedIds.length > 0 && (
+          <div className="toolbar__group toolbar__hint">
+            {`${selectedIds.length} selected`}
+          </div>
+        )}
       </div>
 
       <div className="toolbar__divider" />
 
-      {showColorAndSize && (
-        <div className="toolbar__group toolbar__group--wide">
-          <ColorPicker
-            color={activeSettings.color}
-            onChange={(color) => setToolSetting(tool, { color })}
-          />
-          <BrushControls
-            size={activeSettings.width}
-            color={activeSettings.color}
-            onChange={(width) => setToolSetting(tool, { width })}
-          />
-        </div>
-      )}
-
-      {showEraserSize && (
-        <div className="toolbar__group toolbar__group--wide">
-          <BrushControls
-            size={activeSettings.width}
-            color="#c9c9c9"
-            onChange={(width) => setToolSetting(tool, { width })}
-          />
-        </div>
-      )}
-
-      {tool === "select" && (
-        <div className="toolbar__group toolbar__hint">
-          {selectedIds.length > 0
-            ? `${selectedIds.length} selected`
-            : "Click an object, or drag to marquee-select"}
-        </div>
-      )}
-
-      <div className="toolbar__spacer" />
-
-      <div className="toolbar__group">
+      {/* 3. AI Action Control */}
+      <div className="toolbar__section toolbar__section--ai">
         <button
           type="button"
-          className="toolbar__button"
-          onClick={undo}
-          disabled={!canUndo}
-          title="Undo (Ctrl+Z)"
-          aria-label="Undo"
-        >
-          <Undo2 size={18} />
-        </button>
-        <button
-          type="button"
-          className="toolbar__button"
-          onClick={redo}
-          disabled={!canRedo}
-          title="Redo (Ctrl+Y)"
-          aria-label="Redo"
-        >
-          <Redo2 size={18} />
-        </button>
-        <button
-          type="button"
-          className="toolbar__button"
-          onClick={deleteSelection}
-          disabled={selectedIds.length === 0}
-          title="Delete selection (Delete)"
-          aria-label="Delete selection"
-        >
-          <Trash2 size={18} />
-        </button>
-      </div>
-
-      <div className="toolbar__divider" />
-
-      <div className="toolbar__group">
-        <button
-          type="button"
-          className="toolbar__button toolbar__button--ai"
+          className={`toolbar__button toolbar__button--ai-prominent${isAnalyzing ? " toolbar__button--ai-loading" : ""}`}
           onClick={onManualAnalyze}
+          disabled={isAnalyzing}
           title="Analyze region now (Ctrl+Enter)"
-          aria-label="Analyze region now"
+          aria-label="Analyze region now (Ctrl+Enter)"
         >
-          <Sparkles size={18} />
+          <Sparkles size={16} className="toolbar__ai-sparkle" />
+          <span className="toolbar__ai-text">AI Analyze</span>
         </button>
       </div>
 
       <div className="toolbar__divider" />
 
-      <div className="toolbar__group">
-        <button type="button" className="toolbar__button" onClick={onSave} title="Save (Ctrl+S)" aria-label="Save">
-          <Save size={18} />
-        </button>
-        <button type="button" className="toolbar__button" onClick={onLoad} title="Load (Ctrl+O)" aria-label="Load">
-          <FolderOpen size={18} />
-        </button>
+      {/* 4. SEPARATE 3-DOTS MENU (Draw to shape, Laser pointer, Toggle grid) */}
+      <div className="toolbar__section toolbar__section--more" ref={moreMenuRef}>
         <button
           type="button"
-          className="toolbar__button"
-          onClick={onExport}
-          title="Export PNG (Ctrl+E)"
-          aria-label="Export PNG"
+          className={`toolbar__button toolbar__button--more${
+            moreMenuOpen || tool === "laser" ? " toolbar__button--active" : ""
+          }`}
+          onClick={() => {
+            setMoreMenuOpen((prev) => !prev);
+            setShapesDropdownOpen(false);
+          }}
+          title="More tools and canvas options"
+          aria-label="More options"
+          aria-expanded={moreMenuOpen}
         >
-          <Download size={18} />
+          <MoreVertical size={16} strokeWidth={2} />
         </button>
-        <button
-          type="button"
-          className="toolbar__button toolbar__button--danger"
-          onClick={onClear}
-          title="Clear canvas"
-          aria-label="Clear canvas"
-        >
-          Clear
-        </button>
-        <button
-          type="button"
-          className="toolbar__button"
-          onClick={onToggleHelp}
-          title="Keyboard shortcuts (?)"
-          aria-label="Keyboard shortcuts"
-        >
-          <Keyboard size={18} />
-        </button>
+
+        {moreMenuOpen && (
+          <div className="toolbar__more-menu" role="menu" aria-label="More Options Menu">
+            {/* Draw to shape */}
+            <button
+              type="button"
+              role="menuitem"
+              className={`toolbar__more-item${drawToShapeEnabled ? " toolbar__more-item--active" : ""}`}
+              onClick={() => {
+                toggleDrawToShape();
+              }}
+              title="Draw to Shape (Auto-recognize drawn shapes)"
+              aria-label="Draw to shape"
+            >
+              <Wand2 size={16} className="toolbar__more-item-icon" />
+              <div className="toolbar__more-item-text">
+                <span className="toolbar__more-item-title">Draw to Shape</span>
+                <span className="toolbar__more-item-desc">Auto-convert strokes to shapes</span>
+              </div>
+              {drawToShapeEnabled && <Check size={14} className="toolbar__more-item-check" />}
+            </button>
+
+            {/* Laser pointer */}
+            <button
+              type="button"
+              role="menuitem"
+              className={`toolbar__more-item${tool === "laser" ? " toolbar__more-item--active" : ""}`}
+              onClick={() => {
+                setTool("laser");
+                setMoreMenuOpen(false);
+              }}
+              title="Laser Pointer (line disappears in 3 seconds)"
+              aria-label="Laser pointer"
+            >
+              <Flame size={16} className="toolbar__more-item-icon toolbar__more-item-icon--laser" />
+              <div className="toolbar__more-item-text">
+                <span className="toolbar__more-item-title">Laser Pointer</span>
+                <span className="toolbar__more-item-desc">Fades out after 3 seconds</span>
+              </div>
+              {tool === "laser" && <Check size={14} className="toolbar__more-item-check" />}
+            </button>
+
+            <div className="toolbar__more-divider" />
+
+            {/* Toggle grid */}
+            <button
+              type="button"
+              role="menuitem"
+              className={`toolbar__more-item${showGrid ? " toolbar__more-item--active" : ""}`}
+              onClick={() => {
+                toggleGrid();
+              }}
+              title="Toggle canvas grid (Default: Off)"
+              aria-label="Toggle grid"
+            >
+              <Grid size={16} className="toolbar__more-item-icon" />
+              <div className="toolbar__more-item-text">
+                <span className="toolbar__more-item-title">Canvas Grid</span>
+                <span className="toolbar__more-item-desc">{showGrid ? "Visible" : "Hidden (Default)"}</span>
+              </div>
+              <span className={`toolbar__more-badge${showGrid ? " toolbar__more-badge--on" : ""}`}>
+                {showGrid ? "ON" : "OFF"}
+              </span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -10,12 +10,13 @@ import type {
   StrokeTool,
 } from "../../types/document";
 import { useCanvasStore } from "../../state/canvasStore";
-import { CanvasRenderer } from "../../canvas/CanvasRenderer";
+import { CanvasRenderer, type LaserTrail } from "../../canvas/CanvasRenderer";
 import {
   boundsOfPoints,
   clamp,
   screenToWorld,
   unionBounds,
+  worldToScreen,
   zoomCameraAtPoint,
 } from "../../canvas/CoordinateSystem";
 import { panCamera } from "../../canvas/Camera";
@@ -34,13 +35,14 @@ import {
   translatePoints,
 } from "../../utils/geometry";
 import { generateId } from "../../utils/id";
-import { boundsOfConnector, boundsOfShape, boundsOfText, resolveConnectorEndpoints } from "../../canvas/ShapeRenderer";
+import { boundsOfShape, boundsOfText, resolveConnectorEndpoints } from "../../canvas/ShapeRenderer";
 
 type Handle = "nw" | "ne" | "sw" | "se";
 
 type GestureMode =
   | { kind: "idle" }
   | { kind: "draw"; stroke: Stroke }
+  | { kind: "laser"; trail: LaserTrail }
   | { kind: "draw-shape"; startWorld: Point; shape: CanvasShape }
   | { kind: "draw-connector"; startWorld: Point; connector: CanvasConnector }
   | { kind: "erase"; erasedStrokeIds: Set<string>; erasedShapeIds: Set<string>; erasedConnectorIds: Set<string>; erasedTextIds: Set<string> }
@@ -87,7 +89,6 @@ export function CanvasView({ onManualAnalyze }: CanvasViewProps = {}) {
   const viewportRef = useRef({ width: 0, height: 0 });
   const spaceHeldRef = useRef(false);
   const [, forceRerender] = useState(0);
-  const [visibleStats, setVisibleStats] = useState({ visible: 0, total: 0 });
 
   const strokes = useCanvasStore((s) => s.strokes);
   const shapes = useCanvasStore((s) => s.shapes);
@@ -97,6 +98,7 @@ export function CanvasView({ onManualAnalyze }: CanvasViewProps = {}) {
   const tool = useCanvasStore((s) => s.tool);
   const toolSettings = useCanvasStore((s) => s.toolSettings);
   const selectedIds = useCanvasStore((s) => s.selectedIds);
+  const showGrid = useCanvasStore((s) => s.showGrid);
   const setCamera = useCanvasStore((s) => s.setCamera);
   const setSelection = useCanvasStore((s) => s.setSelection);
   const addStroke = useCanvasStore((s) => s.addStroke);
@@ -122,6 +124,9 @@ export function CanvasView({ onManualAnalyze }: CanvasViewProps = {}) {
   toolSettingsRef.current = toolSettings;
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
+  const showGridRef = useRef(showGrid);
+  showGridRef.current = showGrid;
+  const laserTrailsRef = useRef<LaserTrail[]>([]);
 
   const [inlineTextEditor, setInlineTextEditor] = useState<{
     worldX: number;
@@ -232,7 +237,10 @@ export function CanvasView({ onManualAnalyze }: CanvasViewProps = {}) {
       marquee = gesture.current;
     }
 
-    const { visibleCount, totalCount } = renderer.render({
+    const now = Date.now();
+    laserTrailsRef.current = laserTrailsRef.current.filter((t) => now - t.createdAt < 3000);
+
+    renderer.render({
       strokes: displayStrokes,
       shapes: displayShapes,
       connectors: displayConnectors,
@@ -244,15 +252,11 @@ export function CanvasView({ onManualAnalyze }: CanvasViewProps = {}) {
       liveStroke,
       liveShape,
       liveConnector,
+      laserTrails: laserTrailsRef.current,
       selectedIds: new Set(selectedIdsRef.current),
       marquee,
-      showGrid: true,
+      showGrid: showGridRef.current,
     });
-    setVisibleStats((prev) =>
-      prev.visible === visibleCount && prev.total === totalCount
-        ? prev
-        : { visible: visibleCount, total: totalCount }
-    );
   }, []);
 
   useEffect(() => {
@@ -278,7 +282,7 @@ export function CanvasView({ onManualAnalyze }: CanvasViewProps = {}) {
 
   useEffect(() => {
     scheduleRender();
-  }, [strokes, shapes, connectors, textObjects, camera, selectedIds, scheduleRender]);
+  }, [strokes, shapes, connectors, textObjects, camera, selectedIds, showGrid, scheduleRender]);
 
   const worldFromEvent = useCallback((clientX: number, clientY: number): Point => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -564,7 +568,7 @@ export function CanvasView({ onManualAnalyze }: CanvasViewProps = {}) {
               color: existing.fontColor || "#1e1e1e",
               existingId: existing.id,
             });
-            gestureRef.current = null;
+            gestureRef.current = { kind: "idle" };
             return;
           }
         }
@@ -576,7 +580,22 @@ export function CanvasView({ onManualAnalyze }: CanvasViewProps = {}) {
           fontSize: settings.width || 18,
           color: settings.color || "#1e1e1e",
         });
-        gestureRef.current = null;
+        gestureRef.current = { kind: "idle" };
+        return;
+      }
+
+      if (currentTool === "laser") {
+        const settings = toolSettingsRef.current.laser;
+        const trail: LaserTrail = {
+          id: generateId("laser"),
+          points: [world],
+          createdAt: Date.now(),
+          color: settings.color || "#ff2a5f",
+          width: settings.width || 5,
+        };
+        laserTrailsRef.current.push(trail);
+        gestureRef.current = { kind: "laser", trail };
+        scheduleRender();
         return;
       }
 
@@ -617,6 +636,24 @@ export function CanvasView({ onManualAnalyze }: CanvasViewProps = {}) {
         const dy = e.clientY - gesture.lastY;
         gestureRef.current = { ...gesture, lastX: e.clientX, lastY: e.clientY };
         setCamera(panCamera(cameraRef.current, dx, dy));
+        return;
+      }
+
+      if (gesture.kind === "laser") {
+        const events = getCoalescedEvents(e);
+        const rect = canvasRef.current!.getBoundingClientRect();
+        const newPoints: Point[] = events.map((ev) =>
+          pointerEventToWorldPoint(
+            ev,
+            rect,
+            cameraRef.current,
+            viewportRef.current.width,
+            viewportRef.current.height
+          )
+        );
+        gesture.trail.points.push(...newPoints);
+        gesture.trail.createdAt = Date.now();
+        scheduleRender();
         return;
       }
 
@@ -837,6 +874,21 @@ export function CanvasView({ onManualAnalyze }: CanvasViewProps = {}) {
         // safe to ignore
       }
 
+      if (gesture.kind === "laser") {
+        gesture.trail.createdAt = Date.now();
+        gestureRef.current = { kind: "idle" };
+        const decayLoop = () => {
+          const now = Date.now();
+          laserTrailsRef.current = laserTrailsRef.current.filter((t) => now - t.createdAt < 3000);
+          scheduleRender();
+          if (laserTrailsRef.current.length > 0) {
+            requestAnimationFrame(decayLoop);
+          }
+        };
+        requestAnimationFrame(decayLoop);
+        return;
+      }
+
       if (gesture.kind === "draw") {
         if (gesture.stroke.points.length > 0) {
           addStroke(gesture.stroke);
@@ -991,7 +1043,6 @@ export function CanvasView({ onManualAnalyze }: CanvasViewProps = {}) {
   }, []);
 
   const cursor = cursorForTool(tool, spaceHeldRef.current);
-  const totalObjCount = strokes.length + shapes.length + connectors.length + textObjects.length;
 
   return (
     <div ref={containerRef} className="canvas-container">
@@ -1006,10 +1057,6 @@ export function CanvasView({ onManualAnalyze }: CanvasViewProps = {}) {
         onWheel={onWheel}
         onContextMenu={(e) => e.preventDefault()}
       />
-      <div className="canvas-stats" aria-hidden="true">
-        {visibleStats.visible}/{totalObjCount} objects visible · zoom{" "}
-        {(camera.zoom * 100).toFixed(0)}%
-      </div>
       {inlineTextEditor && (() => {
         const rect = containerRef.current?.getBoundingClientRect();
         const vw = rect?.width || window.innerWidth;
@@ -1115,10 +1162,24 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
 }
 
+const PEN_CURSOR = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%231e1e1e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>') 2 22, crosshair`;
+
+const PENCIL_CURSOR = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%233a3a3a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>') 2 22, crosshair`;
+
+const HIGHLIGHTER_CURSOR = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="%23ffd43b" stroke="%23d97706" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11-6 6v3h3l6-6"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg>') 3 20, crosshair`;
+
+const ERASER_CURSOR = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="%23ffffff" stroke="%23e03131" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>') 5 19, cell`;
+
+const LASER_CURSOR = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="%23ff2a5f"/><circle cx="12" cy="12" r="9" fill="none" stroke="%23ff2a5f" stroke-width="1.5" stroke-dasharray="2 2"/><circle cx="12" cy="12" r="2" fill="%23ffffff"/></svg>') 12 12, crosshair`;
+
 function cursorForTool(tool: string, spaceHeld: boolean): string {
   if (spaceHeld || tool === "hand") return "grab";
   if (tool === "select") return "default";
-  if (tool === "eraser") return "cell";
+  if (tool === "pen") return PEN_CURSOR;
+  if (tool === "pencil") return PENCIL_CURSOR;
+  if (tool === "highlighter") return HIGHLIGHTER_CURSOR;
+  if (tool === "eraser") return ERASER_CURSOR;
+  if (tool === "laser") return LASER_CURSOR;
   if (tool === "text") return "text";
   return "crosshair";
 }

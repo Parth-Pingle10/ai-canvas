@@ -90,7 +90,8 @@ export function createCleanShape(
   isDraft = true,
   draftGroupId?: string,
   sourceStrokeIds?: string[],
-  sourceBounds?: BoundingBox
+  sourceBounds?: BoundingBox,
+  replaceSource = true
 ): CanvasShape {
   const width = Math.max(40, bounds.maxX - bounds.minX);
   const height = Math.max(40, bounds.maxY - bounds.minY);
@@ -114,6 +115,7 @@ export function createCleanShape(
     draftGroupId,
     sourceStrokeIds,
     sourceBounds: sourceBounds ?? bounds,
+    replaceSource,
     createdAt: Date.now(),
     version: 1,
   };

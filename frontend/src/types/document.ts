@@ -21,7 +21,8 @@ export type ToolId =
   | "arrow"
   | "line"
   | "text"
-  | "connector";
+  | "connector"
+  | "laser";
 
 export interface Point {
   x: number;
@@ -86,6 +87,7 @@ export interface CanvasShape {
   draftGroupId?: string;
   sourceStrokeIds?: string[];
   sourceBounds?: BoundingBox;
+  replaceSource?: boolean;
   createdAt: number;
   version: number;
 }
@@ -117,6 +119,7 @@ export interface CanvasConnector {
   draftGroupId?: string;
   sourceStrokeIds?: string[];
   sourceBounds?: BoundingBox;
+  replaceSource?: boolean;
   createdAt: number;
   version: number;
 }
@@ -139,6 +142,7 @@ export interface CanvasText {
   draftGroupId?: string;
   sourceStrokeIds?: string[];
   sourceBounds?: BoundingBox;
+  replaceSource?: boolean;
   createdAt: number;
   version: number;
 }

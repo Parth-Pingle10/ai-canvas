@@ -104,6 +104,7 @@ export interface AnalyzeRequestPayload {
   sessionId: string;
   trigger: "idle_pause" | "manual";
   canvasTexts?: string[];
+  promptOverride?: string;
   tCaptureMs: number;
   tDispatchMs: number;
 }
@@ -138,6 +139,7 @@ export async function analyzeRegion(
       t_dispatch_ms: payload.tDispatchMs,
     },
     trigger: payload.trigger,
+    ...(payload.promptOverride ? { prompt_override: payload.promptOverride } : {}),
   };
 
   let resp: Response;
@@ -163,6 +165,8 @@ export async function analyzeRegion(
 
   return data as AnalyzeResponse;
 }
+
+export type OutcomeType = "accepted" | "discarded" | "cancelled" | "superseded" | "error" | "timeout";
 
 const reportedOutcomes = new Set<string>();
 

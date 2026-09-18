@@ -61,6 +61,16 @@ interface CanvasState {
   viewportSize: { width: number; height: number };
   setViewportSize: (size: { width: number; height: number }) => void;
 
+  // Grid
+  showGrid: boolean;
+  setShowGrid: (show: boolean) => void;
+  toggleGrid: () => void;
+
+  // Smart Shape Recognition Mode
+  drawToShapeEnabled: boolean;
+  setDrawToShapeEnabled: (enabled: boolean) => void;
+  toggleDrawToShape: () => void;
+
   // Tool
   setTool: (tool: ToolId) => void;
   setToolSetting: (tool: ToolId, patch: Partial<ToolSettings>) => void;
@@ -151,6 +161,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   viewportSize: { width: 0, height: 0 },
   setViewportSize: (size) => set({ viewportSize: size }),
 
+  showGrid: false,
+  setShowGrid: (showGrid) => set({ showGrid }),
+  toggleGrid: () => set((state) => ({ showGrid: !state.showGrid })),
+
+  drawToShapeEnabled: false,
+  setDrawToShapeEnabled: (drawToShapeEnabled) => set({ drawToShapeEnabled }),
+  toggleDrawToShape: () => set((state) => ({ drawToShapeEnabled: !state.drawToShapeEnabled })),
+
   setTool: (tool) => set({ tool, selectedIds: tool === "select" ? get().selectedIds : [] }),
 
   setToolSetting: (tool, patch) =>
@@ -228,25 +246,25 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   acceptDraftGroup: (draftGroupId) => {
     const { shapes, connectors, textObjects, strokes, commitScene } = get();
 
-    // 1. Collect all source stroke IDs associated with this draft group
+    // 1. Collect all source stroke IDs specifically marked for replacement (e.g. rough shape transformations)
     const sourceStrokeIdSet = new Set<string>();
     for (const s of shapes) {
-      if (s.draftGroupId === draftGroupId && s.sourceStrokeIds) {
+      if (s.draftGroupId === draftGroupId && s.replaceSource && s.sourceStrokeIds) {
         for (const id of s.sourceStrokeIds) sourceStrokeIdSet.add(id);
       }
     }
     for (const c of connectors) {
-      if (c.draftGroupId === draftGroupId && c.sourceStrokeIds) {
+      if (c.draftGroupId === draftGroupId && c.replaceSource && c.sourceStrokeIds) {
         for (const id of c.sourceStrokeIds) sourceStrokeIdSet.add(id);
       }
     }
     for (const t of textObjects) {
-      if (t.draftGroupId === draftGroupId && t.sourceStrokeIds) {
+      if (t.draftGroupId === draftGroupId && t.replaceSource && t.sourceStrokeIds) {
         for (const id of t.sourceStrokeIds) sourceStrokeIdSet.add(id);
       }
     }
 
-    // 2. Remove replaced source strokes (only when accepted)
+    // 2. Remove replaced source strokes (only for transformation intents marked with replaceSource)
     const nextStrokes =
       sourceStrokeIdSet.size > 0
         ? strokes.filter((s) => !sourceStrokeIdSet.has(s.id))
@@ -318,7 +336,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const sourceIds = target?.sourceStrokeIds;
 
     const nextStrokes =
-      sourceIds && sourceIds.length > 0
+      target?.replaceSource && sourceIds && sourceIds.length > 0
         ? strokes.filter((s) => !sourceIds.includes(s.id))
         : strokes;
 

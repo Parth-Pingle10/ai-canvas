@@ -4,7 +4,7 @@ import { useMetricsStore } from "../state/metricsStore";
 import { computeRoi, extractRegion, roiSignature } from "../canvas/RegionExtractor";
 import { unionBounds, viewportWorldBounds } from "../canvas/CoordinateSystem";
 import { generateId } from "../utils/id";
-import { analyzeRegion, reportOutcome, AnalyzeApiError } from "./apiClient";
+import { analyzeRegion, AnalyzeApiError } from "./apiClient";
 import type { AiObject, WorldRect } from "../types/ai";
 import type { BoundingBox, CanvasShape, CanvasText, Stroke } from "../types/document";
 import { layoutDiagram } from "../canvas/LayoutEngine";
@@ -12,7 +12,6 @@ import { createCleanShape } from "../utils/shapeRecognition";
 import { calculateFocusCamera, isBoundsComfortablyVisible } from "../canvas/Camera";
 import { placeAnswerRelativeToQuestion } from "../canvas/AnswerPlacement";
 
-const IDLE_DELAY_MS = Number(import.meta.env.VITE_AI_IDLE_DELAY_MS ?? 700);
 const ROI_MARGIN = Number(import.meta.env.VITE_AI_ROI_MARGIN ?? 100);
 const ROI_RESOLUTION = Number(import.meta.env.VITE_AI_ROI_RESOLUTION ?? 1024);
 const ROI_FORMAT = ((import.meta.env.VITE_AI_ROI_FORMAT as string | undefined) ?? "png") as
@@ -42,7 +41,6 @@ export function useAiTrigger() {
   const dirtyTextIdsRef = useRef<Set<string>>(new Set());
   const dirtyShapeIdsRef = useRef<Set<string>>(new Set());
 
-  const idleTimerRef = useRef<number | null>(null);
   const lastSignatureRef = useRef<string | null>(null);
   const inFlightRef = useRef<{ requestId: string; controller: AbortController } | null>(null);
 
@@ -86,7 +84,7 @@ export function useAiTrigger() {
     }
   }, [strokes, textObjects, shapes]);
 
-  const dispatch = useCallback(async (trigger: "idle_pause" | "manual") => {
+  const dispatch = useCallback(async (trigger: "idle_pause" | "manual", promptOverride?: string) => {
     const state = useCanvasStore.getState();
     const totalObjects =
       state.strokes.length +
@@ -94,8 +92,8 @@ export function useAiTrigger() {
       state.shapes.length +
       state.connectors.length;
 
-    // Empty canvas protection
-    if (totalObjects === 0) {
+    // Empty canvas protection (only if no prompt instruction was provided)
+    if (totalObjects === 0 && !promptOverride) {
       pushNotice("generic", "Add something to the canvas before analyzing.");
       return;
     }
@@ -200,6 +198,7 @@ export function useAiTrigger() {
           sessionId,
           trigger,
           canvasTexts: region.canvasTexts,
+          promptOverride,
           tCaptureMs,
           tDispatchMs,
         },
@@ -266,6 +265,7 @@ export function useAiTrigger() {
           bounds: anchorBounds,
           sourceBounds: roi.bounds,
           sourceStrokeIds: roi.strokeIds,
+          replaceSource: false,
           requestId,
           createdAt: Date.now(),
           version: 1,
@@ -345,8 +345,8 @@ export function useAiTrigger() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const triggerManualAnalysis = useCallback(() => {
-    void dispatch("manual");
+  const triggerManualAnalysis = useCallback((promptOverride?: string) => {
+    void dispatch("manual", promptOverride);
   }, [dispatch]);
 
   return { triggerManualAnalysis };

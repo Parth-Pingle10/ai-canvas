@@ -19,6 +19,8 @@ export function drawShape(
   ctx.lineWidth = strokeWidth;
   ctx.strokeStyle = strokeColor;
   ctx.fillStyle = fillColor ?? "#ffffff";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
 
   if (isDraft) {
     ctx.setLineDash([6 / zoom, 4 / zoom]);
@@ -43,7 +45,7 @@ export function drawShape(
   if (isDraft) {
     ctx.save();
     ctx.strokeStyle = "rgba(76, 110, 245, 0.4)";
-    ctx.lineWidth = (strokeWidth + 2);
+    ctx.lineWidth = strokeWidth + 2;
     ctx.stroke();
     ctx.restore();
   }
@@ -69,14 +71,18 @@ function buildShapePath(
 
   switch (type) {
     case "rectangle":
-      ctx.rect(x, y, w, h);
-      break;
     case "rounded_rectangle": {
-      const radius = Math.min(16, w / 4, h / 4);
+      const radius = Math.min(12, Math.max(4, Math.min(w, h) / 4));
       if (typeof ctx.roundRect === "function") {
         ctx.roundRect(x, y, w, h, radius);
       } else {
-        ctx.rect(x, y, w, h);
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.arcTo(x + w, y, x + w, y + h, radius);
+        ctx.arcTo(x + w, y + h, x, y + h, radius);
+        ctx.arcTo(x, y + h, x, y, radius);
+        ctx.arcTo(x, y, x + w, y, radius);
+        ctx.closePath();
       }
       break;
     }
@@ -100,9 +106,15 @@ function buildShapePath(
       ctx.lineTo(x, cy);
       ctx.closePath();
       break;
-    default:
-      ctx.rect(x, y, w, h);
+    default: {
+      const radius = Math.min(12, Math.max(4, Math.min(w, h) / 4));
+      if (typeof ctx.roundRect === "function") {
+        ctx.roundRect(x, y, w, h, radius);
+      } else {
+        ctx.rect(x, y, w, h);
+      }
       break;
+    }
   }
 }
 
@@ -166,6 +178,8 @@ export function drawConnector(
   ctx.lineWidth = strokeWidth;
   ctx.strokeStyle = strokeColor;
   ctx.fillStyle = strokeColor;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
 
   if (isDraft) {
     ctx.setLineDash([5 / zoom, 4 / zoom]);
@@ -176,16 +190,49 @@ export function drawConnector(
   }
 
   const points = computeConnectorPoints(start, end, routing);
+  if (points.length < 2) {
+    ctx.restore();
+    return;
+  }
+
+  const headLength = Math.max(12, strokeWidth * 3.5);
+
+  // Shorten the line endpoints so the stroke never pierces or passes the arrowhead tip
+  let lineStart = { ...points[0] };
+  let lineEnd = { ...points[points.length - 1] };
+
+  if (startArrow && points.length >= 2) {
+    const p1 = points[1];
+    const angle = Math.atan2(lineStart.y - p1.y, lineStart.x - p1.x);
+    const dist = Math.hypot(lineStart.x - p1.x, lineStart.y - p1.y);
+    const offset = Math.min(headLength * 0.85, dist * 0.5);
+    lineStart = {
+      x: lineStart.x - Math.cos(angle) * offset,
+      y: lineStart.y - Math.sin(angle) * offset,
+    };
+  }
+
+  if (endArrow && points.length >= 2) {
+    const pPrev = points[points.length - 2];
+    const angle = Math.atan2(lineEnd.y - pPrev.y, lineEnd.x - pPrev.x);
+    const dist = Math.hypot(lineEnd.x - pPrev.x, lineEnd.y - pPrev.y);
+    const offset = Math.min(headLength * 0.85, dist * 0.5);
+    lineEnd = {
+      x: lineEnd.x - Math.cos(angle) * offset,
+      y: lineEnd.y - Math.sin(angle) * offset,
+    };
+  }
 
   // Draw connector line path
   ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length; i++) {
+  ctx.moveTo(lineStart.x, lineStart.y);
+  for (let i = 1; i < points.length - 1; i++) {
     ctx.lineTo(points[i].x, points[i].y);
   }
+  ctx.lineTo(lineEnd.x, lineEnd.y);
   ctx.stroke();
 
-  // Draw arrowheads
+  // Draw arrowheads at the actual target tips
   if (endArrow && points.length >= 2) {
     const pPrev = points[points.length - 2];
     const pEnd = points[points.length - 1];
@@ -197,7 +244,6 @@ export function drawConnector(
 
   // Draw label badge if present
   if (label) {
-    const midIdx = Math.floor(points.length / 2);
     const midX = (points[0].x + points[points.length - 1].x) / 2;
     const midY = (points[0].y + points[points.length - 1].y) / 2;
     drawConnectorLabel(ctx, label, midX, midY, strokeColor, isDraft);
@@ -236,11 +282,13 @@ function drawArrowHead(
   _zoom: number
 ): void {
   const angle = Math.atan2(to.y - from.y, to.x - from.x);
-  const headLength = Math.max(10, strokeWidth * 3.5);
-  const headWidth = Math.max(6, strokeWidth * 2.2);
+  const headLength = Math.max(12, strokeWidth * 3.5);
+  const headWidth = Math.max(8, strokeWidth * 2.2);
 
   ctx.save();
   ctx.setLineDash([]); // solid arrowhead
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
   ctx.beginPath();
   ctx.moveTo(to.x, to.y);
   ctx.lineTo(
@@ -268,7 +316,6 @@ function drawConnectorLabel(
   ctx.font = "600 12px system-ui, -apple-system, sans-serif";
   const metrics = ctx.measureText(label);
   const padX = 6;
-  const padY = 3;
   const boxW = metrics.width + padX * 2;
   const boxH = 18;
   const boxX = x - boxW / 2;

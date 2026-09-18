@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { Check, Loader2, X } from "lucide-react";
+import { Check, Sparkles, X } from "lucide-react";
 import { useCanvasStore } from "../../state/canvasStore";
 import { useMetricsStore } from "../../state/metricsStore";
 import { worldToScreen } from "../../canvas/CoordinateSystem";
@@ -12,16 +12,12 @@ import "./AiObjectLayer.css";
 const MIN_CARD_WIDTH = 160;
 const MIN_CARD_HEIGHT = 80;
 
-import { Sparkles } from "lucide-react";
-
 export function AiObjectLayer() {
   const camera = useCanvasStore((s) => s.camera);
   const viewportSize = useCanvasStore((s) => s.viewportSize);
   const aiObjects = useCanvasStore((s) => s.aiObjects);
   const shapes = useCanvasStore((s) => s.shapes);
-  const connectors = useCanvasStore((s) => s.connectors);
   const textObjects = useCanvasStore((s) => s.textObjects);
-  const pendingRequests = useCanvasStore((s) => s.pendingRequests);
 
   // Group active draft shapes, connectors, & native text by draftGroupId
   const draftGroups = new Map<string, { bounds: WorldRect; title: string }>();

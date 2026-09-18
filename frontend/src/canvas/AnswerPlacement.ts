@@ -1,5 +1,5 @@
 import type { BoundingBox, CanvasConnector, CanvasShape, CanvasText, Stroke } from "../types/document";
-import { boundsIntersect, boundsWidth, boundsHeight } from "./CoordinateSystem";
+import { boundsIntersect, boundsHeight } from "./CoordinateSystem";
 import { generateId } from "../utils/id";
 
 export interface PlaceAnswerOptions {
@@ -220,6 +220,7 @@ export function placeAnswerRelativeToQuestion(options: PlaceAnswerOptions): Plac
     draftGroupId,
     sourceStrokeIds,
     sourceBounds,
+    replaceSource: false,
     createdAt: Date.now(),
     version: 1,
   };

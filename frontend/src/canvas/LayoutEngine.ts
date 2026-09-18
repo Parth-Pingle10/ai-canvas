@@ -17,6 +17,7 @@ export interface LayoutOptions {
   isDraft?: boolean;
   sourceStrokeIds?: string[];
   sourceBounds?: BoundingBox;
+  replaceSource?: boolean;
   strokeColor?: string;
   fillColor?: string;
 }
@@ -248,6 +249,7 @@ export function layoutDiagram(
       draftGroupId,
       sourceStrokeIds: options.sourceStrokeIds,
       sourceBounds: options.sourceBounds,
+      replaceSource: options.replaceSource,
       createdAt: now,
       version: 1,
     };
@@ -309,6 +311,7 @@ export function layoutDiagram(
       draftGroupId,
       sourceStrokeIds: options.sourceStrokeIds,
       sourceBounds: options.sourceBounds,
+      replaceSource: options.replaceSource,
       createdAt: now,
       version: 1,
     };

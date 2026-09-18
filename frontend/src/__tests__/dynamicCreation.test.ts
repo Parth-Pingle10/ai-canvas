@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { layoutDiagram } from "../canvas/LayoutEngine";
 import { computeRoi, roiSignature } from "../canvas/RegionExtractor";
 import type { DiagramEdge, DiagramNode } from "../ai/apiClient";
-import type { CanvasText, Stroke } from "../types/document";
+import type { CanvasText } from "../types/document";
 
 describe("Dynamic Canvas Creation Pipeline", () => {
   it("computes ROI including CanvasText objects when user types instruction", () => {

@@ -19,6 +19,10 @@ import {
 } from "./utils/persistence";
 import { downloadBlob, EmptyCanvasExportError, exportCanvasToPng } from "./utils/exportPng";
 import { seedRandomStrokes } from "./utils/devSeed";
+import { BottomControls } from "./components/UI/BottomControls";
+import { PromptSidebar } from "./components/UI/PromptSidebar";
+import { ShapePalette } from "./components/UI/ShapePalette";
+import { TopRightActions } from "./components/UI/TopRightActions";
 import "./App.css";
 
 const AUTOSAVE_INTERVAL_MS = 8000;
@@ -26,6 +30,7 @@ const AUTOSAVE_INTERVAL_MS = 8000;
 export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [metricsOpen, setMetricsOpen] = useState(false);
+  const [shapePaletteOpen, setShapePaletteOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { triggerManualAnalysis } = useAiTrigger();
@@ -140,23 +145,33 @@ export default function App() {
     onLoad: handleLoadClick,
     onExport: handleExport,
     onToggleHelp: () => setHelpOpen((v) => !v),
-    onManualAnalyze: triggerManualAnalysis,
+    onManualAnalyze: () => triggerManualAnalysis(),
     onToggleMetrics: () => setMetricsOpen((v) => !v),
   });
 
   return (
     <div className="app">
-      <CanvasView onManualAnalyze={triggerManualAnalysis} />
+      <CanvasView onManualAnalyze={() => triggerManualAnalysis()} />
       <AiObjectLayer />
       <AiStatusBadge />
       <Toolbar
+        onManualAnalyze={() => triggerManualAnalysis()}
+        isShapePaletteOpen={shapePaletteOpen}
+        onToggleShapePalette={() => setShapePaletteOpen((v) => !v)}
+      />
+      <TopRightActions
         onSave={handleSave}
         onLoad={handleLoadClick}
         onExport={handleExport}
         onClear={handleClear}
         onToggleHelp={() => setHelpOpen((v) => !v)}
-        onManualAnalyze={triggerManualAnalysis}
       />
+      <ShapePalette
+        isOpen={shapePaletteOpen}
+        onClose={() => setShapePaletteOpen(false)}
+      />
+      <BottomControls />
+      <PromptSidebar onSubmitPrompt={(prompt) => triggerManualAnalysis(prompt)} />
       <input
         ref={fileInputRef}
         type="file"

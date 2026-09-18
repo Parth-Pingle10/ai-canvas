@@ -4,11 +4,20 @@ import type {
   CanvasConnector,
   CanvasShape,
   CanvasText,
+  Point,
   Stroke,
 } from "../types/document";
 import { boundsIntersect } from "./CoordinateSystem";
 import { drawHandle, drawSelectionBox, drawStroke } from "./StrokeRenderer";
 import { drawCanvasText, drawConnector, drawShape } from "./ShapeRenderer";
+
+export interface LaserTrail {
+  id: string;
+  points: Point[];
+  createdAt: number;
+  color?: string;
+  width?: number;
+}
 
 export interface RenderInput {
   strokes: Stroke[];
@@ -25,6 +34,8 @@ export interface RenderInput {
   liveShape?: CanvasShape | null;
   /** In-progress connector being drawn right now. */
   liveConnector?: CanvasConnector | null;
+  /** Active ephemeral laser trails (last 3 seconds). */
+  laserTrails?: LaserTrail[];
   /** Selected element ids (strokes, shapes, connectors, text), for drawing bounding box + handles. */
   selectedIds: Set<string>;
   /** Marquee selection rectangle, in world space, while dragging. */
@@ -136,6 +147,55 @@ export class CanvasRenderer {
 
     if (input.liveStroke) {
       drawStroke(ctx, input.liveStroke);
+    }
+
+    // 4.5 Draw Laser Trails (ephemeral 3-second glowing laser lines)
+    if (input.laserTrails && input.laserTrails.length > 0) {
+      const now = Date.now();
+      for (const trail of input.laserTrails) {
+        const age = now - trail.createdAt;
+        if (age >= 3000 || trail.points.length === 0) continue;
+        const opacity = Math.max(0, 1 - age / 3000);
+        const color = trail.color || "#ff2a5f";
+        const width = trail.width || 5;
+
+        ctx.save();
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.globalAlpha = opacity;
+
+        // Outer neon glow
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 14 / camera.zoom;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width * 1.5;
+
+        ctx.beginPath();
+        ctx.moveTo(trail.points[0].x, trail.points[0].y);
+        for (let i = 1; i < trail.points.length; i++) {
+          ctx.lineTo(trail.points[i].x, trail.points[i].y);
+        }
+        ctx.stroke();
+
+        // Core bright center
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = Math.max(1.5, width * 0.5);
+        ctx.stroke();
+
+        // Glowing dot at tip
+        const lastPt = trail.points[trail.points.length - 1];
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(lastPt.x, lastPt.y, width * 1.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(lastPt.x, lastPt.y, width * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
     }
 
     // 5. Draw Selection Highlights and Handles

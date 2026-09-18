@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Loader2, Sparkles, X } from "lucide-react";
+import { Check, Loader2, X } from "lucide-react";
 import { useCanvasStore } from "../../state/canvasStore";
 import { useMetricsStore } from "../../state/metricsStore";
 import { reportOutcome } from "../../ai/apiClient";

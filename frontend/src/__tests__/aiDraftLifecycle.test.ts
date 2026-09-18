@@ -115,6 +115,92 @@ describe("AI draft object lifecycle", () => {
     expect(useCanvasStore.getState().aiObjects).toHaveLength(0);
     expect(useCanvasStore.getState().strokes).toHaveLength(1); // stroke untouched
   });
+
+  it("accepting a question answer draft (replaceSource: false) preserves source question strokes", () => {
+    const stroke = {
+      id: "q_stroke_1",
+      type: "stroke" as const,
+      points: [{ x: 10, y: 10 }, { x: 20, y: 20 }],
+      color: "#000",
+      width: 2,
+      tool: "pen" as const,
+      opacity: 1,
+      bounds: { minX: 10, minY: 10, maxX: 20, maxY: 20 },
+      createdAt: 0,
+      version: 1,
+    };
+    useCanvasStore.getState().addStroke(stroke);
+
+    useCanvasStore.getState().addTextObject({
+      id: "ans_1",
+      type: "text",
+      x: 10,
+      y: 40,
+      width: 100,
+      height: 30,
+      text: "42",
+      fontSize: 20,
+      fontColor: "#1e1e1e",
+      bounds: { minX: 10, minY: 40, maxX: 110, maxY: 70 },
+      status: "draft",
+      draftGroupId: "grp_q1",
+      sourceStrokeIds: ["q_stroke_1"],
+      replaceSource: false,
+      createdAt: 0,
+      version: 1,
+    });
+
+    useCanvasStore.getState().acceptDraftGroup("grp_q1");
+
+    // Both the original question stroke and the confirmed answer text must be present!
+    expect(useCanvasStore.getState().strokes).toHaveLength(1);
+    expect(useCanvasStore.getState().strokes[0].id).toBe("q_stroke_1");
+    expect(useCanvasStore.getState().textObjects).toHaveLength(1);
+    expect(useCanvasStore.getState().textObjects[0].status).toBe("confirmed");
+  });
+
+  it("accepting a shape transformation (replaceSource: true) replaces the rough source stroke", () => {
+    const roughStroke = {
+      id: "rough_s1",
+      type: "stroke" as const,
+      points: [{ x: 50, y: 50 }, { x: 100, y: 50 }, { x: 75, y: 10 }],
+      color: "#000",
+      width: 2,
+      tool: "pen" as const,
+      opacity: 1,
+      bounds: { minX: 50, minY: 10, maxX: 100, maxY: 50 },
+      createdAt: 0,
+      version: 1,
+    };
+    useCanvasStore.getState().addStroke(roughStroke);
+
+    useCanvasStore.getState().addShape({
+      id: "clean_triangle",
+      type: "shape",
+      shapeType: "triangle",
+      x: 50,
+      y: 10,
+      width: 50,
+      height: 40,
+      strokeColor: "#1e1e1e",
+      strokeWidth: 2,
+      opacity: 1,
+      bounds: { minX: 50, minY: 10, maxX: 100, maxY: 50 },
+      status: "draft",
+      draftGroupId: "grp_shape1",
+      sourceStrokeIds: ["rough_s1"],
+      replaceSource: true,
+      createdAt: 0,
+      version: 1,
+    });
+
+    useCanvasStore.getState().acceptDraftGroup("grp_shape1");
+
+    // Rough stroke should be removed and clean shape confirmed
+    expect(useCanvasStore.getState().strokes).toHaveLength(0);
+    expect(useCanvasStore.getState().shapes).toHaveLength(1);
+    expect(useCanvasStore.getState().shapes[0].status).toBe("confirmed");
+  });
 });
 
 describe("pending AI request cancellation", () => {

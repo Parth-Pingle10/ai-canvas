@@ -1,0 +1,106 @@
+.shape-palette {
+  position: fixed;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 196px;
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(20, 20, 30, 0.12), 0 2px 6px rgba(20, 20, 30, 0.05);
+  z-index: 28;
+  pointer-events: auto;
+  user-select: none;
+  overflow: hidden;
+  animation: style-palette-pop 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes style-palette-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+}
+
+.shape-palette__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--surface-inset);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.shape-palette__title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shape-palette__icon {
+  color: var(--accent);
+}
+
+.shape-palette__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.shape-palette__close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.shape-palette__close-btn:hover {
+  background: var(--border-subtle);
+  color: var(--text);
+}
+
+.shape-palette__properties {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.shape-palette__property-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shape-palette__property-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+@media (max-width: 760px) {
+  .shape-palette {
+    left: 10px;
+    top: auto;
+    bottom: 70px;
+    transform: none;
+  }
+}

@@ -21,6 +21,7 @@ export const DEFAULT_TOOL_SETTINGS: Record<ToolId, ToolSettings> = {
   line: { color: "#1e1e1e", width: 3, opacity: 1 },
   text: { color: "#1e1e1e", width: 16, opacity: 1 },
   connector: { color: "#1e1e1e", width: 2.5, opacity: 1 },
+  laser: { color: "#ff2a5f", width: 5, opacity: 1 },
 };
 
 export const COLOR_PRESETS = [

@@ -17,20 +17,6 @@
   touch-action: none;
 }
 
-.canvas-stats {
-  position: absolute;
-  bottom: 12px;
-  right: 14px;
-  font-size: 11px;
-  color: var(--text-faint);
-  background: var(--surface);
-  border: 1px solid var(--border-subtle);
-  padding: 4px 9px;
-  border-radius: 8px;
-  pointer-events: none;
-  user-select: none;
-}
-
 .app__hidden-input {
   display: none;
 }
@@ -57,8 +43,3 @@
   word-break: break-word;
 }
 
-@media (max-width: 760px) {
-  .canvas-stats {
-    display: none;
-  }
-}

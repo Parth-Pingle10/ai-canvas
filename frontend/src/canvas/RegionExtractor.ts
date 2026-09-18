@@ -106,17 +106,21 @@ export async function extractRegion(
     );
 
     // Draw full scene layers in order: shapes -> connectors -> strokes -> text
+    const shapesMap = new Map<string, CanvasShape>();
     for (const shape of relevantShapes) {
-      drawShape(ctx, shape);
+      shapesMap.set(shape.id, shape);
+    }
+    for (const shape of relevantShapes) {
+      drawShape(ctx, shape, 1);
     }
     for (const connector of relevantConnectors) {
-      drawConnector(ctx, connector);
+      drawConnector(ctx, connector, shapesMap, 1);
     }
     for (const stroke of relevantStrokes) {
       drawStroke(ctx, stroke);
     }
     for (const textObj of relevantTexts) {
-      drawCanvasText(ctx, textObj);
+      drawCanvasText(ctx, textObj, 1);
     }
   }
 

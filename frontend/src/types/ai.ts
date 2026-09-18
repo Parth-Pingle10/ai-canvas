@@ -39,6 +39,7 @@ export interface AiObject {
    * a future connecting-line visual between source and draft. */
   sourceBounds: BoundingBox;
   sourceStrokeIds?: string[];
+  replaceSource?: boolean;
   requestId: string;
   createdAt: number;
   version: number;

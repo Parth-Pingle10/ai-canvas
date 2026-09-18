@@ -46,6 +46,36 @@ describe("analyzeRegion", () => {
     expect(result.draft.content).toBe("hi");
   });
 
+  it("includes prompt_override in JSON payload when promptOverride is provided", async () => {
+    let capturedBody: string | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        capturedBody = init?.body as string;
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            request_id: "req_1",
+            draft: { type: "markdown", content: "ok", title: "T", confidence: 0.9 },
+            model: "test",
+            provider: "test",
+            latency_ms: {},
+            tokens: {},
+            cost_usd: 0,
+          }),
+        });
+      })
+    );
+
+    await analyzeRegion(
+      payload({ promptOverride: "Generate flowchart" }),
+      new AbortController().signal
+    );
+    expect(capturedBody).toBeDefined();
+    const parsed = JSON.parse(capturedBody!);
+    expect(parsed.prompt_override).toBe("Generate flowchart");
+  });
+
   it("throws an AnalyzeApiError with the server's error_code on a non-2xx response", async () => {
     vi.stubGlobal(
       "fetch",
